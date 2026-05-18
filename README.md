@@ -17,6 +17,25 @@ At the end, there is a podium with the participants who earned the most points.
 
 Later, we can think of other games to make the event even more fun!
 
+## Local website
+
+The `web` folder contains a local website for logging in with a username and email,
+creating events, and registering for events. The website stores data in your browser
+using `localStorage`.
+
+Run it locally:
+
+```bash
+cd web
+python -m http.server 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
 ## User database
 
 The C++ app includes a tiny local user database for participants.

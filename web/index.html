@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Connect</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main class="app-shell">
+        <section class="login-view" id="loginView">
+            <div class="brand-block">
+                <img src="assets/event-mark.svg" alt="" class="brand-mark">
+                <p class="eyebrow">Hackathon event app</p>
+                <h1>Event Connect</h1>
+                <p class="intro">Log in with your name and email to discover sessions, create event ideas, and register for the ones you want to join.</p>
+            </div>
+
+            <form class="login-panel" id="loginForm">
+                <label>
+                    Username
+                    <input type="text" id="usernameInput" name="username" autocomplete="name" required>
+                </label>
+
+                <label>
+                    Email
+                    <input type="email" id="emailInput" name="email" autocomplete="email" required>
+                </label>
+
+                <button type="submit">Enter app</button>
+                <p class="form-message" id="loginMessage"></p>
+            </form>
+        </section>
+
+        <section class="dashboard-view hidden" id="dashboardView">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">Signed in</p>
+                    <h1 id="welcomeTitle">Welcome</h1>
+                </div>
+                <button class="secondary-button" type="button" id="logoutButton">Log out</button>
+            </header>
+
+            <section class="summary-strip" aria-label="Registration summary">
+                <div>
+                    <span id="totalEvents">0</span>
+                    <p>Events</p>
+                </div>
+                <div>
+                    <span id="registeredCount">0</span>
+                    <p>Registered</p>
+                </div>
+                <div>
+                    <span id="userCount">0</span>
+                    <p>Users</p>
+                </div>
+            </section>
+
+            <div class="workspace">
+                <section class="event-list-section">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Browse</p>
+                            <h2>Available Events</h2>
+                        </div>
+                        <div class="filter-group" role="group" aria-label="Filter events">
+                            <button class="filter-button active" type="button" data-filter="all">All</button>
+                            <button class="filter-button" type="button" data-filter="profesional">Profesional</button>
+                            <button class="filter-button" type="button" data-filter="leisure">Leisure</button>
+                        </div>
+                    </div>
+                    <div class="event-grid" id="eventGrid"></div>
+                </section>
+
+                <aside class="create-panel">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="eyebrow">Organize</p>
+                            <h2>Create Event</h2>
+                        </div>
+                    </div>
+
+                    <form id="eventForm">
+                        <label>
+                            Event name
+                            <input type="text" id="eventNameInput" required>
+                        </label>
+
+                        <label>
+                            Description
+                            <textarea id="eventDescriptionInput" rows="4" required></textarea>
+                        </label>
+
+                        <div class="two-column">
+                            <label>
+                                Start date
+                                <input type="date" id="startDateInput" required>
+                            </label>
+                            <label>
+                                End date
+                                <input type="date" id="endDateInput" required>
+                            </label>
+                        </div>
+
+                        <label>
+                            Location
+                            <input type="text" id="locationInput" placeholder="Optional">
+                        </label>
+
+                        <label>
+                            Type
+                            <select id="eventTypeInput" required>
+                                <option value="profesional">Profesional</option>
+                                <option value="leisure">Leisure</option>
+                            </select>
+                        </label>
+
+                        <button type="submit">Create event</button>
+                        <p class="form-message" id="eventMessage"></p>
+                    </form>
+                </aside>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

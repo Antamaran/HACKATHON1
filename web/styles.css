@@ -371,6 +371,22 @@ form {
     font-size: 0.82rem;
 }
 
+.manager-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    color: var(--muted);
+    list-style: none;
+}
+
+.inline-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+}
+
 .task-builder {
     display: grid;
     gap: 14px;
@@ -413,6 +429,12 @@ form {
 
 .task-exp {
     color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.task-status {
+    color: var(--muted);
     font-size: 0.82rem;
     font-weight: 800;
 }
@@ -503,7 +525,8 @@ form {
     }
 
     .summary-strip,
-    .two-column {
+    .two-column,
+    .inline-form {
         grid-template-columns: 1fr;
     }
 

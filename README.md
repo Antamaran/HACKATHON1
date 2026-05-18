@@ -20,8 +20,9 @@ Later, we can think of other games to make the event even more fun!
 ## Local website
 
 The `web` folder contains a local website for logging in with a username and email,
-creating events, and registering for events. The website stores data in your browser
-using `localStorage`.
+creating events, and registering for events. First-time signups use a local demo
+email verification code before the account is created. The website stores data in
+your browser using `localStorage`.
 
 Run it locally:
 

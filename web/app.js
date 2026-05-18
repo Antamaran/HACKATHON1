@@ -1,3 +1,4 @@
+// Keys used for all browser-side data. This keeps localStorage names consistent.
 const STORAGE_KEYS = {
     currentUser: 'eventConnect.currentUser',
     users: 'eventConnect.users',
@@ -5,6 +6,11 @@ const STORAGE_KEYS = {
     registrations: 'eventConnect.registrations'
 };
 
+const SESSION_KEYS = {
+    pendingSignup: 'eventConnect.pendingSignup'
+};
+
+// Starter events shown the first time someone opens the site in this browser.
 const seedEvents = [
     {
         id: 'coffee-match',
@@ -38,10 +44,14 @@ const seedEvents = [
 const loginView = document.querySelector('#loginView');
 const dashboardView = document.querySelector('#dashboardView');
 const loginForm = document.querySelector('#loginForm');
+const verificationForm = document.querySelector('#verificationForm');
 const eventForm = document.querySelector('#eventForm');
 const eventGrid = document.querySelector('#eventGrid');
 const welcomeTitle = document.querySelector('#welcomeTitle');
 const loginMessage = document.querySelector('#loginMessage');
+const verificationMessage = document.querySelector('#verificationMessage');
+const demoCodeBox = document.querySelector('#demoCodeBox');
+const cancelVerificationButton = document.querySelector('#cancelVerificationButton');
 const eventMessage = document.querySelector('#eventMessage');
 const logoutButton = document.querySelector('#logoutButton');
 const filterButtons = document.querySelectorAll('.filter-button');
@@ -51,6 +61,7 @@ const userCount = document.querySelector('#userCount');
 
 let activeFilter = 'all';
 
+// Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
     const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : fallback;
@@ -58,6 +69,15 @@ function readStore(key, fallback) {
 
 function writeStore(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readSession(key, fallback) {
+    const saved = sessionStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+}
+
+function writeSession(key, value) {
+    sessionStorage.setItem(key, JSON.stringify(value));
 }
 
 function normalizeEmail(email) {
@@ -80,10 +100,15 @@ function getRegistrations() {
     return readStore(STORAGE_KEYS.registrations, {});
 }
 
+function findUserByEmail(email) {
+    return getUsers().find((user) => user.email === email);
+}
+
 function saveUser(user) {
     const users = getUsers();
     const existingIndex = users.findIndex((item) => item.email === user.email);
 
+    // Email acts like the unique user id: logging in again updates the username.
     if (existingIndex >= 0) {
         users[existingIndex] = user;
     } else {
@@ -94,7 +119,36 @@ function saveUser(user) {
     writeStore(STORAGE_KEYS.currentUser, user);
 }
 
+function generateVerificationCode() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function startEmailVerification(user) {
+    const code = generateVerificationCode();
+
+    writeSession(SESSION_KEYS.pendingSignup, {
+        ...user,
+        code
+    });
+
+    // Static local sites cannot send real email without a backend or email service.
+    demoCodeBox.textContent = `Local demo email code for ${user.email}: ${code}`;
+    verificationMessage.textContent = '';
+    loginForm.classList.add('hidden');
+    verificationForm.classList.remove('hidden');
+    document.querySelector('#verificationCodeInput').focus();
+}
+
+function cancelEmailVerification() {
+    sessionStorage.removeItem(SESSION_KEYS.pendingSignup);
+    verificationForm.reset();
+    verificationForm.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    loginMessage.textContent = '';
+}
+
 function createEventId(name) {
+    // Make a readable id from the event name, then add a timestamp to avoid duplicates.
     const slug = name
         .trim()
         .toLowerCase()
@@ -119,6 +173,7 @@ function toggleRegistration(eventId) {
     const registrations = getRegistrations();
     const eventUsers = registrations[eventId] || [];
 
+    // Clicking the same event again unregisters the current user.
     if (eventUsers.includes(user.email)) {
         registrations[eventId] = eventUsers.filter((email) => email !== user.email);
     } else {
@@ -161,6 +216,7 @@ function renderDashboard() {
         ? events
         : events.filter((event) => event.type === activeFilter);
 
+    // Rebuild the counts and event cards from storage every time data changes.
     welcomeTitle.textContent = user ? `Welcome, ${user.username}` : 'Welcome';
     totalEvents.textContent = String(events.length);
     registeredCount.textContent = String(registeredEventIds);
@@ -170,8 +226,17 @@ function renderDashboard() {
 
 function showView() {
     const user = getCurrentUser();
+    const pendingSignup = readSession(SESSION_KEYS.pendingSignup, null);
+
+    // A saved current user means the browser stays logged in after refresh.
     loginView.classList.toggle('hidden', Boolean(user));
     dashboardView.classList.toggle('hidden', !user);
+    loginForm.classList.toggle('hidden', Boolean(pendingSignup));
+    verificationForm.classList.toggle('hidden', !pendingSignup);
+
+    if (pendingSignup) {
+        demoCodeBox.textContent = `Local demo email code for ${pendingSignup.email}: ${pendingSignup.code}`;
+    }
 
     if (user) {
         renderDashboard();
@@ -189,11 +254,43 @@ loginForm.addEventListener('submit', (event) => {
         return;
     }
 
-    saveUser({ username, email });
+    const existingUser = findUserByEmail(email);
+    if (!existingUser) {
+        startEmailVerification({ username, email });
+        return;
+    }
+
+    saveUser({ ...existingUser, username });
     loginForm.reset();
     loginMessage.textContent = '';
     showView();
 });
+
+verificationForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+
+    const pendingSignup = readSession(SESSION_KEYS.pendingSignup, null);
+    const submittedCode = document.querySelector('#verificationCodeInput').value.trim();
+
+    if (!pendingSignup) {
+        verificationMessage.textContent = 'No signup is waiting for verification.';
+        return;
+    }
+
+    if (submittedCode !== pendingSignup.code) {
+        verificationMessage.textContent = 'That code is not correct.';
+        return;
+    }
+
+    const { code, ...verifiedUser } = pendingSignup;
+    saveUser(verifiedUser);
+    sessionStorage.removeItem(SESSION_KEYS.pendingSignup);
+    verificationForm.reset();
+    loginForm.reset();
+    showView();
+});
+
+cancelVerificationButton.addEventListener('click', cancelEmailVerification);
 
 eventForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -205,6 +302,7 @@ eventForm.addEventListener('submit', (event) => {
     const location = document.querySelector('#locationInput').value.trim();
     const type = document.querySelector('#eventTypeInput').value;
 
+    // Date inputs use YYYY-MM-DD, so string comparison works for order checking.
     if (endDate < startDate) {
         eventMessage.textContent = 'End date cannot be before start date.';
         return;
@@ -228,6 +326,7 @@ eventForm.addEventListener('submit', (event) => {
 });
 
 eventGrid.addEventListener('click', (event) => {
+    // Event cards are rendered dynamically, so one grid listener handles all buttons.
     const button = event.target.closest('[data-register]');
     if (!button) {
         return;
@@ -250,6 +349,7 @@ logoutButton.addEventListener('click', () => {
     showView();
 });
 
+// Seed only once so user-created events are not overwritten on refresh.
 if (!localStorage.getItem(STORAGE_KEYS.events)) {
     writeStore(STORAGE_KEYS.events, seedEvents);
 }

@@ -30,6 +30,28 @@
                 <button type="submit">Enter app</button>
                 <p class="form-message" id="loginMessage"></p>
             </form>
+
+            <form class="login-panel verification-panel hidden" id="verificationForm">
+                <div>
+                    <p class="eyebrow">Email check</p>
+                    <h2>Verify your signup</h2>
+                    <p class="helper-text">Enter the 6-digit code sent to your email.</p>
+                </div>
+
+                <div class="demo-code-box" id="demoCodeBox"></div>
+
+                <label>
+                    Verification code
+                    <input type="text" id="verificationCodeInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required>
+                </label>
+
+                <div class="button-row">
+                    <button type="submit">Verify</button>
+                    <button class="secondary-button" type="button" id="cancelVerificationButton">Back</button>
+                </div>
+
+                <p class="form-message" id="verificationMessage"></p>
+            </form>
         </section>
 
         <section class="dashboard-view hidden" id="dashboardView">

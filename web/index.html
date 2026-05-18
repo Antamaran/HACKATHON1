@@ -78,7 +78,7 @@
                 </div>
                 <div>
                     <span id="userExp">0</span>
-                    <p>XP</p>
+                    <p>Account XP</p>
                 </div>
             </section>
 
@@ -118,6 +118,11 @@
                             <h3 class="compact-title">Connected users</h3>
                             <ul class="connection-list" id="connectionList"></ul>
                         </div>
+
+                        <div>
+                            <h3 class="compact-title">Notifications</h3>
+                            <ul class="notification-list" id="notificationList"></ul>
+                        </div>
                     </section>
 
                     <div class="section-heading compact">
@@ -144,8 +149,19 @@
                                 <input type="date" id="startDateInput" required>
                             </label>
                             <label>
+                                Start time
+                                <input type="time" id="startTimeInput" required>
+                            </label>
+                        </div>
+
+                        <div class="two-column">
+                            <label>
                                 End date
                                 <input type="date" id="endDateInput" required>
+                            </label>
+                            <label>
+                                End time
+                                <input type="time" id="endTimeInput" required>
                             </label>
                         </div>
 

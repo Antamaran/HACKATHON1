@@ -249,7 +249,8 @@ form {
     text-align: center;
 }
 
-.connection-list {
+.connection-list,
+.notification-list {
     display: grid;
     gap: 8px;
     margin: 0;
@@ -257,7 +258,8 @@ form {
     list-style: none;
 }
 
-.connection-list li {
+.connection-list li,
+.notification-list li {
     display: grid;
     gap: 3px;
     border: 1px solid var(--line);
@@ -267,6 +269,7 @@ form {
 }
 
 .connection-list span,
+.notification-list span,
 .empty-state {
     color: var(--muted);
     font-size: 0.88rem;

@@ -4,8 +4,13 @@ const STORAGE_KEYS = {
     users: 'eventConnect.users',
     events: 'eventConnect.events',
     registrations: 'eventConnect.registrations',
-    taskCompletions: 'eventConnect.taskCompletions'
+    taskCompletions: 'eventConnect.taskCompletions',
+    eventRewards: 'eventConnect.eventRewards',
+    notifications: 'eventConnect.notifications'
 };
+
+const DAILY_ACCOUNT_XP_CAP = 200;
+const EVENT_REWARD_DELAY_MS = 60 * 60 * 1000;
 
 const SESSION_KEYS = {
     pendingSignup: 'eventConnect.pendingSignup'
@@ -18,7 +23,9 @@ const seedEvents = [
         name: 'Coffee Match',
         description: 'Meet another participant for a quick conversation before the next session.',
         startDate: '2026-06-01',
+        startTime: '10:00',
         endDate: '2026-06-01',
+        endTime: '11:00',
         location: 'Main hall',
         type: 'leisure',
         organizerEmail: '',
@@ -35,7 +42,9 @@ const seedEvents = [
         name: 'Product Workshop',
         description: 'Build a tiny demo with a small group and share it at the end.',
         startDate: '2026-06-02',
+        startTime: '13:00',
         endDate: '2026-06-03',
+        endTime: '16:30',
         location: 'Room B',
         type: 'profesional',
         organizerEmail: '',
@@ -52,7 +61,9 @@ const seedEvents = [
         name: 'Team Quiz',
         description: 'Answer event-themed questions and collect points with a rotating team.',
         startDate: '2026-06-03',
+        startTime: '17:00',
         endDate: '2026-06-03',
+        endTime: '18:00',
         location: '',
         type: 'leisure',
         organizerEmail: '',
@@ -90,6 +101,7 @@ const connectFlow = document.querySelector('#connectFlow');
 const userQrImage = document.querySelector('#userQrImage');
 const userQrLink = document.querySelector('#userQrLink');
 const connectionList = document.querySelector('#connectionList');
+const notificationList = document.querySelector('#notificationList');
 
 const eventDialog = document.querySelector('#eventDialog');
 const closeDialogButton = document.querySelector('#closeDialogButton');
@@ -223,6 +235,14 @@ function getTaskCompletions() {
     return readStore(STORAGE_KEYS.taskCompletions, {});
 }
 
+function getEventRewards() {
+    return readStore(STORAGE_KEYS.eventRewards, {});
+}
+
+function getNotifications() {
+    return readStore(STORAGE_KEYS.notifications, []);
+}
+
 function findUserByEmail(email) {
     return getUsers().find((user) => user.email === email);
 }
@@ -244,6 +264,8 @@ function normalizeEvent(event) {
         inviteEmails: event.inviteEmails || [],
         organizerEmail: event.organizerEmail || '',
         managerEmails: (event.managerEmails || []).map(normalizeEmail),
+        startTime: event.startTime || '09:00',
+        endTime: event.endTime || '17:00',
         tasks: (event.tasks || []).map(normalizeTask)
     };
 }
@@ -357,6 +379,10 @@ function saveEvents(events) {
 }
 
 function updateUserExp(email, expToAdd) {
+    if (expToAdd <= 0) {
+        return;
+    }
+
     const users = getUsers();
     const userIndex = users.findIndex((user) => user.email === email);
     if (userIndex < 0) {
@@ -373,6 +399,104 @@ function updateUserExp(email, expToAdd) {
     const currentUser = getCurrentUser();
     if (currentUser?.email === email) {
         writeStore(STORAGE_KEYS.currentUser, users[userIndex]);
+    }
+}
+
+function makeLocalDateTime(date, time) {
+    return new Date(`${date}T${time || '00:00'}`);
+}
+
+function formatEventDateTime(event) {
+    return `${event.startDate} ${event.startTime} to ${event.endDate} ${event.endTime}`;
+}
+
+function getRewardDay(event) {
+    return event.endDate;
+}
+
+function getEventRewardTime(event) {
+    return new Date(makeLocalDateTime(event.endDate, event.endTime).getTime() + EVENT_REWARD_DELAY_MS);
+}
+
+function getEventScore(event, userEmail) {
+    const completions = getTaskCompletions();
+
+    return event.tasks.reduce((total, task) => {
+        const approvedUsers = completions[event.id]?.[task.id]?.approved || [];
+        return approvedUsers.includes(userEmail) ? total + task.exp : total;
+    }, 0);
+}
+
+function getDailyAccountXpAwarded(rewards, userEmail, day) {
+    return Object.values(rewards)
+        .filter((reward) => reward.userEmail === userEmail && reward.day === day)
+        .reduce((total, reward) => total + reward.accountXpAwarded, 0);
+}
+
+function addNotification(userEmail, message) {
+    const notifications = getNotifications();
+    notifications.unshift({
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+        userEmail,
+        message,
+        createdAt: new Date().toISOString()
+    });
+
+    writeStore(STORAGE_KEYS.notifications, notifications.slice(0, 50));
+}
+
+function processEventRewards() {
+    const now = new Date();
+    const events = getEvents();
+    const registrations = getRegistrations();
+    const rewards = getEventRewards();
+    let changedRewards = false;
+
+    events.forEach((event) => {
+        if (now < getEventRewardTime(event)) {
+            return;
+        }
+
+        const registeredEmails = registrations[event.id] || [];
+        registeredEmails.forEach((email) => {
+            const eventXp = getEventScore(event, email);
+            if (eventXp <= 0) {
+                return;
+            }
+
+            const rewardKey = `${event.id}:${email}`;
+            const existingReward = rewards[rewardKey];
+            const eventXpDelta = eventXp - (existingReward?.eventXp || 0);
+            if (eventXpDelta <= 0) {
+                return;
+            }
+
+            const day = getRewardDay(event);
+            const alreadyAwardedToday = getDailyAccountXpAwarded(rewards, email, day);
+            const remainingDailyXp = Math.max(DAILY_ACCOUNT_XP_CAP - alreadyAwardedToday, 0);
+            const accountXpAwarded = Math.min(eventXpDelta, remainingDailyXp);
+
+            rewards[rewardKey] = {
+                eventId: event.id,
+                eventName: event.name,
+                userEmail: email,
+                day,
+                eventXp,
+                accountXpAwarded: (existingReward?.accountXpAwarded || 0) + accountXpAwarded,
+                createdAt: now.toISOString()
+            };
+
+            updateUserExp(email, accountXpAwarded);
+            addNotification(
+                email,
+                `You have received ${accountXpAwarded} account XP from ${event.name}. Event leaderboard score: ${eventXp} XP.`
+            );
+            changedRewards = true;
+        });
+    });
+
+    if (changedRewards) {
+        writeStore(STORAGE_KEYS.eventRewards, rewards);
     }
 }
 
@@ -460,7 +584,7 @@ function renderEventCard(event) {
         <article class="event-card ${isInvitedEvent ? 'invited-event' : ''}" id="event-${escapeHtml(event.id)}">
             <div class="event-meta">
                 <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
-                <span class="pill">${escapeHtml(event.startDate)} to ${escapeHtml(event.endDate)}</span>
+                <span class="pill">${escapeHtml(formatEventDateTime(event))}</span>
             </div>
             <h3>${escapeHtml(event.name)}</h3>
             <p>${escapeHtml(event.description)}</p>
@@ -477,6 +601,8 @@ function renderEventCard(event) {
 }
 
 function renderDashboard() {
+    processEventRewards();
+
     const user = getCurrentUser();
     const events = getEvents();
     const users = getUsers();
@@ -547,6 +673,7 @@ function renderProfile(user) {
 
     renderConnectFlow(user);
     renderConnections(user);
+    renderNotifications(user);
 }
 
 function renderConnectFlow(user) {
@@ -609,6 +736,25 @@ function renderConnections(user) {
             </li>
         `).join('')
         : '<li class="empty-state">No connected users yet.</li>';
+}
+
+function renderNotifications(user) {
+    if (!notificationList) {
+        return;
+    }
+
+    const notifications = getNotifications()
+        .filter((notification) => notification.userEmail === user.email)
+        .slice(0, 5);
+
+    notificationList.innerHTML = notifications.length
+        ? notifications.map((notification) => `
+            <li>
+                <strong>${escapeHtml(notification.message)}</strong>
+                <span>${escapeHtml(new Date(notification.createdAt).toLocaleString())}</span>
+            </li>
+        `).join('')
+        : '<li class="empty-state">No notifications yet.</li>';
 }
 
 function isEventManager(event, user) {
@@ -728,14 +874,18 @@ function renderLeaderboard(event) {
     const registeredEmails = registrations[event.id] || [];
     const users = getUsers()
         .filter((user) => registeredEmails.includes(user.email))
-        .sort((first, second) => second.exp - first.exp || first.username.localeCompare(second.username));
+        .map((user) => ({
+            ...user,
+            eventXp: getEventScore(event, user.email)
+        }))
+        .sort((first, second) => second.eventXp - first.eventXp || first.username.localeCompare(second.username));
 
     const leaderboardItems = users.map((user, index) => `
         <li>
             <span class="leaderboard-rank">${index + 1}</span>
             <strong>${escapeHtml(user.username)}</strong>
             <span>${escapeHtml(user.email)}</span>
-            <span class="task-exp">${escapeHtml(user.exp)} XP</span>
+            <span class="task-exp">${escapeHtml(user.eventXp)} event XP</span>
         </li>
     `).join('');
 
@@ -785,7 +935,8 @@ function openEventDialog(eventId) {
         </section>
         <section class="dialog-section">
             <h3>Details</h3>
-            <p>${escapeHtml(event.startDate)} to ${escapeHtml(event.endDate)}</p>
+            <p>${escapeHtml(formatEventDateTime(event))}</p>
+            <p>Account XP notifications unlock around ${escapeHtml(getEventRewardTime(event).toLocaleString())}</p>
             <p>${escapeHtml(locationText)}</p>
             <p>Organizer: ${escapeHtml(organizerText)}</p>
         </section>
@@ -882,7 +1033,6 @@ function approveTaskCompletion(eventId, taskId, userEmail) {
     taskCompletion.pending = taskCompletion.pending.filter((email) => email !== userEmail);
     if (!taskCompletion.approved.includes(userEmail)) {
         taskCompletion.approved.push(userEmail);
-        updateUserExp(userEmail, task.exp);
     }
 
     completions[eventId] = {
@@ -1024,14 +1174,15 @@ eventForm.addEventListener('submit', (event) => {
     const name = document.querySelector('#eventNameInput').value.trim();
     const description = document.querySelector('#eventDescriptionInput').value.trim();
     const startDate = document.querySelector('#startDateInput').value;
+    const startTime = document.querySelector('#startTimeInput').value;
     const endDate = document.querySelector('#endDateInput').value;
+    const endTime = document.querySelector('#endTimeInput').value;
     const location = document.querySelector('#locationInput').value.trim();
     const type = document.querySelector('#eventTypeInput').value;
     const inviteEmails = parseInviteEmails(document.querySelector('#inviteEmailsInput').value);
 
-    // Date inputs use YYYY-MM-DD, so string comparison works for order checking.
-    if (endDate < startDate) {
-        eventMessage.textContent = 'End date cannot be before start date.';
+    if (makeLocalDateTime(endDate, endTime) <= makeLocalDateTime(startDate, startTime)) {
+        eventMessage.textContent = 'End date and time must be after the start date and time.';
         eventMessage.classList.remove('success-message');
         return;
     }
@@ -1050,7 +1201,9 @@ eventForm.addEventListener('submit', (event) => {
         name,
         description,
         startDate,
+        startTime,
         endDate,
+        endTime,
         location,
         type,
         inviteEmails,
@@ -1175,3 +1328,9 @@ if (!localStorage.getItem(STORAGE_KEYS.events)) {
 }
 
 showView();
+
+setInterval(() => {
+    if (getCurrentUser()) {
+        renderDashboard();
+    }
+}, 60 * 1000);

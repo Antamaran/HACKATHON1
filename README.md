@@ -29,11 +29,18 @@ open the event details to see local invite links that open the site directly to
 that event so invitees can log in and register. Invite emails are hidden from
 non-organizers.
 
-Users have an XP value, starting at `0 XP`. Event organizers can add tasks to
-their events, and each task has a name, description, and XP value.
-Organizers can also add other event managers. Attendees can mark tasks as
-completed, and an event manager must approve the completion before XP is awarded.
-Each event info dialog includes a leaderboard of registered attendees sorted by XP.
+Users have an account XP value, starting at `0 XP`. Event organizers can add tasks
+to their events, and each task has a name, description, and XP value. Organizers
+can also add other event managers. Attendees can mark tasks as completed, and an
+event manager must approve the completion before it counts toward the event
+leaderboard.
+
+Events include start/end dates and start/end times. Approved tasks count toward
+the event-specific leaderboard immediately, but account XP is awarded about one
+hour after the event ends. Account XP from event tasks is capped at `200 XP` per
+day, so a user can score `300 XP` on an event leaderboard while only receiving
+the daily maximum in their account XP bar. Reward messages appear in the profile
+notifications list when the app is opened or refreshed after the reward time.
 
 Each signed-in user also gets a personal QR code in their profile panel. The QR
 code opens a connection page with a `Connect with user` button. After connecting,

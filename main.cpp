@@ -16,6 +16,10 @@ struct User {
     std::set<std::string> connectedUsers;
 };
 
+int levelForExp(int exp) {
+    return (std::max(0, exp) / 100) + 1;
+}
+
 // Stores participants in a simple local text file.
 // Format: email<TAB>name<TAB>exp<TAB>connected_email,connected_email
 class UserDatabase {
@@ -463,7 +467,8 @@ private:
 };
 
 void printUser(const User& user) {
-    std::cout << user.name << " <" << user.email << "> | " << user.exp << " XP";
+    std::cout << user.name << " <" << user.email << "> | " << user.exp
+              << " XP | level " << levelForExp(user.exp);
 
     if (user.connectedUsers.empty()) {
         std::cout << " | connected users: none\n";

@@ -302,7 +302,7 @@ form {
 
 .summary-strip {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
     margin-bottom: 22px;
 }
@@ -513,7 +513,7 @@ form {
 }
 
 .leaderboard-list li {
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto auto;
     align-items: center;
 }
 

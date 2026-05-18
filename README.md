@@ -29,7 +29,8 @@ open the event details to see local invite links that open the site directly to
 that event so invitees can log in and register. Invite emails are hidden from
 non-organizers.
 
-Users have an account XP value, starting at `0 XP`. Event organizers can add tasks
+Users have an account XP value, starting at `0 XP`, and an account level. Level 1
+starts at `0 XP`, and each `100 XP` adds one level. Event organizers can add tasks
 to their events, and each task has a name, description, and XP value. Organizers
 can also add other event managers. Attendees can mark tasks as completed, and an
 event manager must approve the completion before it counts toward the event

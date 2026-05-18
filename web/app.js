@@ -95,6 +95,7 @@ const totalEvents = document.querySelector('#totalEvents');
 const registeredCount = document.querySelector('#registeredCount');
 const userCount = document.querySelector('#userCount');
 const userExp = document.querySelector('#userExp');
+const userLevel = document.querySelector('#userLevel');
 const addTaskButton = document.querySelector('#addTaskButton');
 const draftTaskList = document.querySelector('#draftTaskList');
 const connectFlow = document.querySelector('#connectFlow');
@@ -135,6 +136,14 @@ function writeSession(key, value) {
 
 function normalizeEmail(email) {
     return email.trim().toLowerCase();
+}
+
+function getLevel(exp) {
+    return Math.floor(Math.max(0, exp) / 100) + 1;
+}
+
+function getNextLevelExp(exp) {
+    return getLevel(exp) * 100;
 }
 
 function isValidEmail(email) {
@@ -632,6 +641,7 @@ function renderDashboard() {
     registeredCount.textContent = String(registeredEventIds);
     userCount.textContent = String(users.length);
     userExp.textContent = String(user?.exp || 0);
+    userLevel.textContent = String(user ? getLevel(user.exp) : 1);
     eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.map(renderEventCard).join('')}`;
     renderProfile(user);
 }
@@ -733,6 +743,7 @@ function renderConnections(user) {
             <li>
                 <strong>${escapeHtml(connectedUser.username)}</strong>
                 <span>${escapeHtml(connectedUser.email)}</span>
+                <span>Level ${escapeHtml(getLevel(connectedUser.exp || 0))}</span>
             </li>
         `).join('')
         : '<li class="empty-state">No connected users yet.</li>';
@@ -885,6 +896,7 @@ function renderLeaderboard(event) {
             <span class="leaderboard-rank">${index + 1}</span>
             <strong>${escapeHtml(user.username)}</strong>
             <span>${escapeHtml(user.email)}</span>
+            <span>Level ${escapeHtml(getLevel(user.exp))}</span>
             <span class="task-exp">${escapeHtml(user.eventXp)} event XP</span>
         </li>
     `).join('');
@@ -937,6 +949,7 @@ function openEventDialog(eventId) {
             <h3>Details</h3>
             <p>${escapeHtml(formatEventDateTime(event))}</p>
             <p>Account XP notifications unlock around ${escapeHtml(getEventRewardTime(event).toLocaleString())}</p>
+            ${user ? `<p>Your account level: ${escapeHtml(getLevel(user.exp))} (${escapeHtml(user.exp)} / ${escapeHtml(getNextLevelExp(user.exp))} XP)</p>` : ''}
             <p>${escapeHtml(locationText)}</p>
             <p>Organizer: ${escapeHtml(organizerText)}</p>
         </section>

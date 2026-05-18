@@ -60,6 +60,7 @@ const registeredCount = document.querySelector('#registeredCount');
 const userCount = document.querySelector('#userCount');
 
 let activeFilter = 'all';
+let activeInvite = getInviteFromUrl();
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
@@ -82,6 +83,49 @@ function writeSession(key, value) {
 
 function normalizeEmail(email) {
     return email.trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function getInviteFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('event');
+    const inviteEmail = params.get('invite');
+
+    if (!eventId) {
+        return null;
+    }
+
+    return {
+        eventId,
+        inviteEmail: inviteEmail ? normalizeEmail(inviteEmail) : ''
+    };
+}
+
+function makeInviteLink(eventId, email) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('event', eventId);
+    url.searchParams.set('invite', email);
+    return url.toString();
+}
+
+function parseInviteEmails(value) {
+    return value
+        .split(/[\n,;]+/)
+        .map(normalizeEmail)
+        .filter(Boolean)
+        .filter((email, index, emails) => emails.indexOf(email) === index);
 }
 
 function getCurrentUser() {
@@ -187,18 +231,30 @@ function toggleRegistration(eventId) {
 function renderEventCard(event) {
     const registered = isRegistered(event.id);
     const locationText = event.location ? event.location : 'No location yet';
+    const inviteEmails = event.inviteEmails || [];
+    const inviteLinks = inviteEmails.map((email) => {
+        const link = makeInviteLink(event.id, email);
+        return `
+            <li>
+                <strong>${escapeHtml(email)}</strong>
+                <a href="${escapeHtml(link)}">${escapeHtml(link)}</a>
+            </li>
+        `;
+    }).join('');
+    const isInvitedEvent = activeInvite?.eventId === event.id;
 
     return `
-        <article class="event-card">
+        <article class="event-card ${isInvitedEvent ? 'invited-event' : ''}" id="event-${escapeHtml(event.id)}">
             <div class="event-meta">
-                <span class="pill ${event.type}">${event.type}</span>
-                <span class="pill">${event.startDate} to ${event.endDate}</span>
+                <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
+                <span class="pill">${escapeHtml(event.startDate)} to ${escapeHtml(event.endDate)}</span>
             </div>
-            <h3>${event.name}</h3>
-            <p>${event.description}</p>
-            <p>${locationText}</p>
+            <h3>${escapeHtml(event.name)}</h3>
+            <p>${escapeHtml(event.description)}</p>
+            <p>${escapeHtml(locationText)}</p>
+            ${inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : ''}
             <div class="event-actions">
-                <button type="button" class="${registered ? 'registered' : ''}" data-register="${event.id}">
+                <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}">
                     ${registered ? 'Registered' : 'Register'}
                 </button>
             </div>
@@ -212,16 +268,53 @@ function renderDashboard() {
     const users = getUsers();
     const registrations = getRegistrations();
     const registeredEventIds = events.filter((event) => registrations[event.id]?.includes(user?.email)).length;
-    const visibleEvents = activeFilter === 'all'
+    let visibleEvents = activeFilter === 'all'
         ? events
         : events.filter((event) => event.type === activeFilter);
+
+    if (activeInvite) {
+        visibleEvents = [...visibleEvents].sort((first, second) => {
+            if (first.id === activeInvite.eventId) {
+                return -1;
+            }
+
+            if (second.id === activeInvite.eventId) {
+                return 1;
+            }
+
+            return 0;
+        });
+    }
 
     // Rebuild the counts and event cards from storage every time data changes.
     welcomeTitle.textContent = user ? `Welcome, ${user.username}` : 'Welcome';
     totalEvents.textContent = String(events.length);
     registeredCount.textContent = String(registeredEventIds);
     userCount.textContent = String(users.length);
-    eventGrid.innerHTML = visibleEvents.map(renderEventCard).join('');
+    eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.map(renderEventCard).join('')}`;
+}
+
+function renderInviteNotice(user) {
+    if (!activeInvite) {
+        return '';
+    }
+
+    const event = getEvents().find((item) => item.id === activeInvite.eventId);
+    if (!event) {
+        return '<div class="invite-notice">This invite link points to an event that is not saved in this browser.</div>';
+    }
+
+    if (!user) {
+        return '<div class="invite-notice">Log in or sign up to register for this invited event.</div>';
+    }
+
+    const inviteEmails = event.inviteEmails || [];
+    const allowed = !activeInvite.inviteEmail || inviteEmails.length === 0 || inviteEmails.includes(user.email);
+    if (!allowed) {
+        return '<div class="invite-notice">This invite link was created for a different email address.</div>';
+    }
+
+    return `<div class="invite-notice">Invite opened for ${escapeHtml(event.name)}. Use the register button on this event card.</div>`;
 }
 
 function showView() {
@@ -236,6 +329,8 @@ function showView() {
 
     if (pendingSignup) {
         demoCodeBox.textContent = `Local demo email code for ${pendingSignup.email}: ${pendingSignup.code}`;
+    } else if (!user && activeInvite?.inviteEmail) {
+        document.querySelector('#emailInput').value = activeInvite.inviteEmail;
     }
 
     if (user) {
@@ -301,27 +396,41 @@ eventForm.addEventListener('submit', (event) => {
     const endDate = document.querySelector('#endDateInput').value;
     const location = document.querySelector('#locationInput').value.trim();
     const type = document.querySelector('#eventTypeInput').value;
+    const inviteEmails = parseInviteEmails(document.querySelector('#inviteEmailsInput').value);
 
     // Date inputs use YYYY-MM-DD, so string comparison works for order checking.
     if (endDate < startDate) {
         eventMessage.textContent = 'End date cannot be before start date.';
+        eventMessage.classList.remove('success-message');
         return;
     }
 
+    const invalidInviteEmail = inviteEmails.find((email) => !isValidEmail(email));
+    if (invalidInviteEmail) {
+        eventMessage.textContent = `Invalid invite email: ${invalidInviteEmail}`;
+        eventMessage.classList.remove('success-message');
+        return;
+    }
+
+    const id = createEventId(name);
     const events = getEvents();
     events.push({
-        id: createEventId(name),
+        id,
         name,
         description,
         startDate,
         endDate,
         location,
-        type
+        type,
+        inviteEmails
     });
 
     writeStore(STORAGE_KEYS.events, events);
     eventForm.reset();
-    eventMessage.textContent = 'Event created.';
+    eventMessage.classList.add('success-message');
+    eventMessage.textContent = inviteEmails.length
+        ? `Event created. ${inviteEmails.length} invite link${inviteEmails.length === 1 ? '' : 's'} added to the event card.`
+        : 'Event created.';
     renderDashboard();
 });
 
@@ -332,7 +441,17 @@ eventGrid.addEventListener('click', (event) => {
         return;
     }
 
-    toggleRegistration(button.dataset.register);
+    const eventId = button.dataset.register;
+    const targetEvent = getEvents().find((item) => item.id === eventId);
+    const user = getCurrentUser();
+    const inviteEmails = targetEvent?.inviteEmails || [];
+    const hasInviteRestriction = activeInvite?.eventId === eventId && activeInvite.inviteEmail;
+
+    if (hasInviteRestriction && inviteEmails.length > 0 && !inviteEmails.includes(user.email)) {
+        return;
+    }
+
+    toggleRegistration(eventId);
 });
 
 filterButtons.forEach((button) => {

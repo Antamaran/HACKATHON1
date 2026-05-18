@@ -24,6 +24,10 @@ creating events, and registering for events. First-time signups use a local demo
 email verification code before the account is created. The website stores data in
 your browser using `localStorage`.
 
+When creating an event, you can add invitee email addresses. The event card will
+show local invite links that open the site directly to that event so invitees can
+log in and register.
+
 Run it locally:
 
 ```bash

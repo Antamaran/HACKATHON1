@@ -28,6 +28,9 @@ When creating an event, you can add invitee email addresses. The event card will
 show local invite links that open the site directly to that event so invitees can
 log in and register.
 
+Users have an XP value, starting at `0 XP`. Event organizers can add tasks to
+their events, and each task has a name, description, and XP value.
+
 Run it locally:
 
 ```bash

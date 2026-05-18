@@ -76,6 +76,10 @@
                     <span id="userCount">0</span>
                     <p>Users</p>
                 </div>
+                <div>
+                    <span id="userExp">0</span>
+                    <p>XP</p>
+                </div>
             </section>
 
             <div class="workspace">
@@ -141,6 +145,28 @@
                             Invite emails
                             <textarea id="inviteEmailsInput" rows="4" placeholder="one@example.com, two@example.com"></textarea>
                         </label>
+
+                        <fieldset class="task-builder">
+                            <legend>Event tasks</legend>
+
+                            <label>
+                                Task name
+                                <input type="text" id="taskNameInput">
+                            </label>
+
+                            <label>
+                                Task description
+                                <textarea id="taskDescriptionInput" rows="3"></textarea>
+                            </label>
+
+                            <label>
+                                XP value
+                                <input type="number" id="taskExpInput" min="1" step="1">
+                            </label>
+
+                            <button class="secondary-button" type="button" id="addTaskButton">Add task</button>
+                            <ul class="draft-task-list" id="draftTaskList"></ul>
+                        </fieldset>
 
                         <button type="submit">Create event</button>
                         <p class="form-message" id="eventMessage"></p>

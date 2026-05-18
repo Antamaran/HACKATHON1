@@ -19,7 +19,15 @@ const seedEvents = [
         startDate: '2026-06-01',
         endDate: '2026-06-01',
         location: 'Main hall',
-        type: 'leisure'
+        type: 'leisure',
+        organizerEmail: '',
+        tasks: [
+            {
+                name: 'Meet three people',
+                description: 'Introduce yourself to three participants during the coffee break.',
+                exp: 30
+            }
+        ]
     },
     {
         id: 'product-workshop',
@@ -28,7 +36,15 @@ const seedEvents = [
         startDate: '2026-06-02',
         endDate: '2026-06-03',
         location: 'Room B',
-        type: 'profesional'
+        type: 'profesional',
+        organizerEmail: '',
+        tasks: [
+            {
+                name: 'Ship a demo',
+                description: 'Create and present a small working prototype.',
+                exp: 80
+            }
+        ]
     },
     {
         id: 'team-quiz',
@@ -37,7 +53,15 @@ const seedEvents = [
         startDate: '2026-06-03',
         endDate: '2026-06-03',
         location: '',
-        type: 'leisure'
+        type: 'leisure',
+        organizerEmail: '',
+        tasks: [
+            {
+                name: 'Join a quiz team',
+                description: 'Register with a team and complete one quiz round.',
+                exp: 40
+            }
+        ]
     }
 ];
 
@@ -58,9 +82,13 @@ const filterButtons = document.querySelectorAll('.filter-button');
 const totalEvents = document.querySelector('#totalEvents');
 const registeredCount = document.querySelector('#registeredCount');
 const userCount = document.querySelector('#userCount');
+const userExp = document.querySelector('#userExp');
+const addTaskButton = document.querySelector('#addTaskButton');
+const draftTaskList = document.querySelector('#draftTaskList');
 
 let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
+let draftTasks = [];
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
@@ -129,15 +157,16 @@ function parseInviteEmails(value) {
 }
 
 function getCurrentUser() {
-    return readStore(STORAGE_KEYS.currentUser, null);
+    const user = readStore(STORAGE_KEYS.currentUser, null);
+    return user ? normalizeUser(user) : null;
 }
 
 function getUsers() {
-    return readStore(STORAGE_KEYS.users, []);
+    return readStore(STORAGE_KEYS.users, []).map(normalizeUser);
 }
 
 function getEvents() {
-    return readStore(STORAGE_KEYS.events, seedEvents);
+    return readStore(STORAGE_KEYS.events, seedEvents).map(normalizeEvent);
 }
 
 function getRegistrations() {
@@ -148,19 +177,45 @@ function findUserByEmail(email) {
     return getUsers().find((user) => user.email === email);
 }
 
+function normalizeUser(user) {
+    return {
+        username: user.username,
+        email: user.email,
+        exp: Number.isFinite(Number(user.exp)) ? Number(user.exp) : 0
+    };
+}
+
+function normalizeEvent(event) {
+    return {
+        ...event,
+        inviteEmails: event.inviteEmails || [],
+        organizerEmail: event.organizerEmail || '',
+        tasks: (event.tasks || []).map(normalizeTask)
+    };
+}
+
+function normalizeTask(task) {
+    return {
+        name: task.name || '',
+        description: task.description || '',
+        exp: Number.isFinite(Number(task.exp)) ? Number(task.exp) : 0
+    };
+}
+
 function saveUser(user) {
     const users = getUsers();
-    const existingIndex = users.findIndex((item) => item.email === user.email);
+    const normalizedUser = normalizeUser(user);
+    const existingIndex = users.findIndex((item) => item.email === normalizedUser.email);
 
     // Email acts like the unique user id: logging in again updates the username.
     if (existingIndex >= 0) {
-        users[existingIndex] = user;
+        users[existingIndex] = normalizedUser;
     } else {
-        users.push(user);
+        users.push(normalizedUser);
     }
 
     writeStore(STORAGE_KEYS.users, users);
-    writeStore(STORAGE_KEYS.currentUser, user);
+    writeStore(STORAGE_KEYS.currentUser, normalizedUser);
 }
 
 function generateVerificationCode() {
@@ -242,6 +297,13 @@ function renderEventCard(event) {
         `;
     }).join('');
     const isInvitedEvent = activeInvite?.eventId === event.id;
+    const taskItems = event.tasks.map((task) => `
+        <li>
+            <strong>${escapeHtml(task.name)}</strong>
+            <span>${escapeHtml(task.description)}</span>
+            <span class="task-exp">${escapeHtml(task.exp)} XP</span>
+        </li>
+    `).join('');
 
     return `
         <article class="event-card ${isInvitedEvent ? 'invited-event' : ''}" id="event-${escapeHtml(event.id)}">
@@ -252,6 +314,8 @@ function renderEventCard(event) {
             <h3>${escapeHtml(event.name)}</h3>
             <p>${escapeHtml(event.description)}</p>
             <p>${escapeHtml(locationText)}</p>
+            ${event.organizerEmail ? `<p>Organizer: ${escapeHtml(event.organizerEmail)}</p>` : ''}
+            ${taskItems ? `<ul class="task-list">${taskItems}</ul>` : ''}
             ${inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : ''}
             <div class="event-actions">
                 <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}">
@@ -291,6 +355,7 @@ function renderDashboard() {
     totalEvents.textContent = String(events.length);
     registeredCount.textContent = String(registeredEventIds);
     userCount.textContent = String(users.length);
+    userExp.textContent = String(user?.exp || 0);
     eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.map(renderEventCard).join('')}`;
 }
 
@@ -351,7 +416,7 @@ loginForm.addEventListener('submit', (event) => {
 
     const existingUser = findUserByEmail(email);
     if (!existingUser) {
-        startEmailVerification({ username, email });
+        startEmailVerification({ username, email, exp: 0 });
         return;
     }
 
@@ -387,9 +452,59 @@ verificationForm.addEventListener('submit', (event) => {
 
 cancelVerificationButton.addEventListener('click', cancelEmailVerification);
 
+function renderDraftTasks() {
+    draftTaskList.innerHTML = draftTasks.map((task, index) => `
+        <li>
+            <strong>${escapeHtml(task.name)}</strong>
+            <span>${escapeHtml(task.description)}</span>
+            <span class="task-exp">${escapeHtml(task.exp)} XP</span>
+            <button class="secondary-button" type="button" data-remove-task="${index}">Remove</button>
+        </li>
+    `).join('');
+}
+
+function clearTaskInputs() {
+    document.querySelector('#taskNameInput').value = '';
+    document.querySelector('#taskDescriptionInput').value = '';
+    document.querySelector('#taskExpInput').value = '';
+}
+
+addTaskButton.addEventListener('click', () => {
+    const name = document.querySelector('#taskNameInput').value.trim();
+    const description = document.querySelector('#taskDescriptionInput').value.trim();
+    const exp = Number(document.querySelector('#taskExpInput').value);
+
+    if (!name || !description || !Number.isFinite(exp) || exp < 1) {
+        eventMessage.textContent = 'Task name, description, and XP value are required.';
+        eventMessage.classList.remove('success-message');
+        return;
+    }
+
+    draftTasks.push({
+        name,
+        description,
+        exp: Math.floor(exp)
+    });
+
+    eventMessage.textContent = '';
+    clearTaskInputs();
+    renderDraftTasks();
+});
+
+draftTaskList.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-task]');
+    if (!button) {
+        return;
+    }
+
+    draftTasks.splice(Number(button.dataset.removeTask), 1);
+    renderDraftTasks();
+});
+
 eventForm.addEventListener('submit', (event) => {
     event.preventDefault();
 
+    const user = getCurrentUser();
     const name = document.querySelector('#eventNameInput').value.trim();
     const description = document.querySelector('#eventDescriptionInput').value.trim();
     const startDate = document.querySelector('#startDateInput').value;
@@ -422,11 +537,15 @@ eventForm.addEventListener('submit', (event) => {
         endDate,
         location,
         type,
-        inviteEmails
+        inviteEmails,
+        organizerEmail: user.email,
+        tasks: draftTasks.map((task) => ({ ...task }))
     });
 
     writeStore(STORAGE_KEYS.events, events);
     eventForm.reset();
+    draftTasks = [];
+    renderDraftTasks();
     eventMessage.classList.add('success-message');
     eventMessage.textContent = inviteEmails.length
         ? `Event created. ${inviteEmails.length} invite link${inviteEmails.length === 1 ? '' : 's'} added to the event card.`

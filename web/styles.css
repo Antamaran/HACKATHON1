@@ -214,7 +214,7 @@ form {
 
 .summary-strip {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 22px;
 }
@@ -365,6 +365,52 @@ form {
     overflow-wrap: anywhere;
     color: var(--accent-strong);
     font-size: 0.82rem;
+}
+
+.task-builder {
+    display: grid;
+    gap: 14px;
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.task-builder legend {
+    padding: 0 6px;
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
+.task-list,
+.draft-task-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.task-list li,
+.draft-task-list li {
+    display: grid;
+    gap: 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8fafc;
+}
+
+.task-list strong,
+.draft-task-list strong {
+    color: var(--ink);
+}
+
+.task-exp {
+    color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 800;
 }
 
 .event-card.invited-event {

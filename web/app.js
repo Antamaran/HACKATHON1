@@ -11,6 +11,14 @@ const STORAGE_KEYS = {
 
 const DAILY_ACCOUNT_XP_CAP = 200;
 const EVENT_REWARD_DELAY_MS = 60 * 60 * 1000;
+const REMOTE_STORAGE_KEYS = [
+    STORAGE_KEYS.users,
+    STORAGE_KEYS.events,
+    STORAGE_KEYS.registrations,
+    STORAGE_KEYS.taskCompletions,
+    STORAGE_KEYS.eventRewards,
+    STORAGE_KEYS.notifications
+];
 
 const SESSION_KEYS = {
     pendingSignup: 'eventConnect.pendingSignup'
@@ -127,6 +135,47 @@ function readStore(key, fallback) {
 
 function writeStore(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+    syncStore(key, value);
+}
+
+function writeLocalStore(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function syncStore(key, value) {
+    if (!REMOTE_STORAGE_KEYS.includes(key)) {
+        return;
+    }
+
+    try {
+        await fetch('/.netlify/functions/data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ key, value })
+        });
+    } catch {
+        // Offline/local dev can keep using localStorage.
+    }
+}
+
+async function loadRemoteState() {
+    try {
+        const response = await fetch('/.netlify/functions/data');
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        Object.entries(data.state || {}).forEach(([key, value]) => {
+            if (REMOTE_STORAGE_KEYS.includes(key) && value !== null && value !== undefined) {
+                writeLocalStore(key, value);
+            }
+        });
+    } catch {
+        // Netlify Functions are unavailable when opening the HTML directly.
+    }
 }
 
 function readSession(key, fallback) {
@@ -136,6 +185,24 @@ function readSession(key, fallback) {
 
 function writeSession(key, value) {
     sessionStorage.setItem(key, JSON.stringify(value));
+}
+
+async function sendEmail(payload) {
+    const response = await fetch('/.netlify/functions/send-email', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Email could not be sent.');
+    }
+
+    return data;
 }
 
 function normalizeEmail(email) {
@@ -540,7 +607,7 @@ function generateVerificationCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function startEmailVerification(user) {
+async function startEmailVerification(user) {
     const code = generateVerificationCode();
 
     writeSession(SESSION_KEYS.pendingSignup, {
@@ -548,12 +615,23 @@ function startEmailVerification(user) {
         code
     });
 
-    // Static local sites cannot send real email without a backend or email service.
-    demoCodeBox.textContent = `Local demo email code for ${user.email}: ${code}`;
+    demoCodeBox.textContent = `Sending verification code to ${user.email}...`;
     verificationMessage.textContent = '';
     loginForm.classList.add('hidden');
     verificationForm.classList.remove('hidden');
     document.querySelector('#verificationCodeInput').focus();
+
+    try {
+        await sendEmail({
+            type: 'verification',
+            to: user.email,
+            code
+        });
+        demoCodeBox.textContent = `Verification code sent to ${user.email}.`;
+    } catch (error) {
+        demoCodeBox.textContent = `Email is not configured yet. Temporary local code for ${user.email}: ${code}`;
+        verificationMessage.textContent = error.message;
+    }
 }
 
 function cancelEmailVerification() {
@@ -884,6 +962,25 @@ function renderInviteLinks(event) {
     return inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : '<p>No invite emails added.</p>';
 }
 
+async function sendEventInvites(event) {
+    const inviteEmails = event.inviteEmails || [];
+    if (inviteEmails.length === 0) {
+        return { sent: 0, failed: 0 };
+    }
+
+    const results = await Promise.allSettled(inviteEmails.map((email) => sendEmail({
+        type: 'invite',
+        to: email,
+        eventName: event.name,
+        inviteLink: makeInviteLink(event.id, email)
+    })));
+
+    return {
+        sent: results.filter((result) => result.status === 'fulfilled').length,
+        failed: results.filter((result) => result.status === 'rejected').length
+    };
+}
+
 function renderManagers(event) {
     const managerItems = event.managerEmails.map((email) => `<li>${escapeHtml(email)}</li>`).join('');
 
@@ -1127,7 +1224,7 @@ function showView() {
     }
 }
 
-loginForm.addEventListener('submit', (event) => {
+loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const username = document.querySelector('#usernameInput').value.trim();
@@ -1140,7 +1237,7 @@ loginForm.addEventListener('submit', (event) => {
 
     const existingUser = findUserByEmail(email);
     if (!existingUser) {
-        startEmailVerification({ username, email, exp: 0 });
+        await startEmailVerification({ username, email, exp: 0 });
         return;
     }
 
@@ -1225,7 +1322,7 @@ draftTaskList.addEventListener('click', (event) => {
     renderDraftTasks();
 });
 
-eventForm.addEventListener('submit', (event) => {
+eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const user = getCurrentUser();
@@ -1254,7 +1351,7 @@ eventForm.addEventListener('submit', (event) => {
 
     const id = createEventId(name);
     const events = getEvents();
-    events.push({
+    const newEvent = {
         id,
         name,
         description,
@@ -1268,17 +1365,30 @@ eventForm.addEventListener('submit', (event) => {
         organizerEmail: user.email,
         managerEmails: [],
         tasks: draftTasks.map((task) => ({ ...task }))
-    });
+    };
+
+    events.push(newEvent);
 
     saveEvents(events);
     eventForm.reset();
     draftTasks = [];
     renderDraftTasks();
     eventMessage.classList.add('success-message');
-    eventMessage.textContent = inviteEmails.length
-        ? `Event created. ${inviteEmails.length} invite link${inviteEmails.length === 1 ? '' : 's'} added to the event card.`
-        : 'Event created.';
+    eventMessage.textContent = 'Event created.';
     renderDashboard();
+
+    if (inviteEmails.length) {
+        try {
+            const inviteResult = await sendEventInvites(newEvent);
+            eventMessage.textContent = `Event created. ${inviteResult.sent} invite email${inviteResult.sent === 1 ? '' : 's'} sent.`;
+
+            if (inviteResult.failed > 0) {
+                eventMessage.textContent += ` ${inviteResult.failed} failed; invite links are still available in event info.`;
+            }
+        } catch {
+            eventMessage.textContent = 'Event created. Invite emails could not be sent; invite links are still available in event info.';
+        }
+    }
 });
 
 eventGrid.addEventListener('click', (event) => {
@@ -1392,11 +1502,17 @@ logoutButton.addEventListener('click', () => {
 });
 
 // Seed only once so user-created events are not overwritten on refresh.
-if (!localStorage.getItem(STORAGE_KEYS.events)) {
-    writeStore(STORAGE_KEYS.events, seedEvents);
+async function initializeApp() {
+    await loadRemoteState();
+
+    if (!localStorage.getItem(STORAGE_KEYS.events)) {
+        writeStore(STORAGE_KEYS.events, seedEvents);
+    }
+
+    showView();
 }
 
-showView();
+initializeApp();
 
 setInterval(() => {
     if (getCurrentUser()) {

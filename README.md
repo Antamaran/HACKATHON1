@@ -19,10 +19,10 @@ Later, we can think of other games to make the event even more fun!
 
 ## Local website
 
-The `web` folder contains a local website for logging in with a username and email,
-creating events, and registering for events. First-time signups use a local demo
-email verification code before the account is created. The website stores data in
-your browser using `localStorage`.
+The `web` folder contains a website for logging in with a username and email,
+creating events, and registering for events. First-time signups use email
+verification before the account is created. The current frontend stores app data
+in the browser using `localStorage`.
 
 When creating an event, you can add invitee email addresses. The organizer can
 open the event details to see local invite links that open the site directly to
@@ -91,11 +91,34 @@ https://your-site-name.netlify.app
 Invite links and connection links will automatically use the Netlify domain once
 users open the deployed site.
 
-Important: this is still a frontend-only prototype. Data is stored in each
-visitor's browser with `localStorage`, so different devices do not share the same
-database yet. The email verification code is also a local demo code, not a real
-email. To make data and email verification real for production, add a backend or
-Netlify Functions plus a database/email provider.
+### Email on Netlify
+
+Email sending is handled by the Netlify Function in `netlify/functions/send-email.js`.
+It uses Resend, so add these environment variables in Netlify:
+
+```text
+RESEND_API_KEY=your_resend_api_key
+EMAIL_FROM=Event Connect <verified@yourdomain.com>
+```
+
+In Netlify, go to **Site configuration** > **Environment variables**, add those
+values, then redeploy. `EMAIL_FROM` must use a sender/domain verified in Resend.
+
+The app sends:
+
+- signup verification codes
+- event invite emails
+
+If email is not configured, signup falls back to showing a temporary local code
+so development does not get blocked.
+
+### Shared Data
+
+Important: event/user data is still stored in each visitor's browser with
+`localStorage` for offline/local fallback, and synced through the Netlify Function
+in `netlify/functions/data.js` using Netlify Blobs when deployed. For a larger
+production app, you may still want a full database such as Supabase, Firebase, or
+Neon.
 
 ## User database
 

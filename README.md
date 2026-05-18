@@ -44,7 +44,7 @@ notifications list when the app is opened or refreshed after the reward time.
 
 Each signed-in user also gets a personal QR code in their profile panel. The QR
 code opens a connection page with a `Connect with user` button. After connecting,
-both users appear in each other's connected users list in the local browser data.
+both users appear in each other's connected users list and receive `10 XP`.
 
 Run it locally:
 
@@ -62,7 +62,7 @@ http://localhost:8000
 ## User database
 
 The C++ app includes a tiny local user database for participants.
-It stores each user's name, email, and connected users in `users.db`.
+It stores each user's name, email, XP, and connected users in `users.db`.
 
 Compile it:
 

@@ -12,13 +12,16 @@
 struct User {
     std::string name;
     std::string email;
+    int exp;
     std::set<std::string> connectedUsers;
 };
 
 // Stores participants in a simple local text file.
-// Format: email<TAB>name<TAB>connected_email,connected_email
+// Format: email<TAB>name<TAB>exp<TAB>connected_email,connected_email
 class UserDatabase {
 public:
+    static constexpr int connectionExpReward = 10;
+
     explicit UserDatabase(std::string filePath) : path(std::move(filePath)) {
         load();
     }
@@ -35,7 +38,7 @@ public:
             throw std::invalid_argument("That does not look like a valid email address.");
         }
 
-        const bool inserted = users.emplace(email, User{name, email, {}}).second;
+        const bool inserted = users.emplace(email, User{name, email, 0, {}}).second;
         if (!inserted) {
             users[email].name = name;
         }
@@ -44,7 +47,7 @@ public:
         return inserted;
     }
 
-    void connectUsers(const std::string& firstEmail, const std::string& secondEmail) {
+    bool connectUsers(const std::string& firstEmail, const std::string& secondEmail) {
         const std::string first = normalizeEmail(firstEmail);
         const std::string second = normalizeEmail(secondEmail);
 
@@ -55,9 +58,17 @@ public:
         requireUser(first);
         requireUser(second);
 
-        users[first].connectedUsers.insert(second);
+        const bool inserted = users[first].connectedUsers.insert(second).second;
         users[second].connectedUsers.insert(first);
+
+        if (!inserted) {
+            return false;
+        }
+
+        users[first].exp += connectionExpReward;
+        users[second].exp += connectionExpReward;
         save();
+        return true;
     }
 
     const User& getUser(const std::string& rawEmail) const {
@@ -130,6 +141,15 @@ private:
                email.find('\t') == std::string::npos;
     }
 
+    static int parseExp(const std::string& value) {
+        try {
+            const int parsed = std::stoi(value);
+            return parsed < 0 ? 0 : parsed;
+        } catch (...) {
+            return 0;
+        }
+    }
+
     const User& requireUser(const std::string& email) const {
         const auto found = users.find(email);
         if (found == users.end()) {
@@ -174,9 +194,12 @@ private:
                 continue;
             }
 
-            User user{name, email, {}};
-            if (columns.size() >= 3) {
-                for (const auto& connectedEmail : split(columns[2], ',')) {
+            const bool hasExpColumn = columns.size() >= 4;
+            User user{name, email, hasExpColumn ? parseExp(columns[2]) : 0, {}};
+            const std::string connectedColumn = hasExpColumn ? columns[3] : (columns.size() >= 3 ? columns[2] : "");
+
+            if (!connectedColumn.empty()) {
+                for (const auto& connectedEmail : split(connectedColumn, ',')) {
                     const std::string normalized = normalizeEmail(connectedEmail);
                     if (isValidEmail(normalized) && normalized != email) {
                         user.connectedUsers.insert(normalized);
@@ -195,7 +218,7 @@ private:
         }
 
         for (const auto& [_, user] : users) {
-            output << user.email << '\t' << user.name << '\t';
+            output << user.email << '\t' << user.name << '\t' << user.exp << '\t';
 
             bool first = true;
             for (const auto& connectedEmail : user.connectedUsers) {
@@ -440,7 +463,7 @@ private:
 };
 
 void printUser(const User& user) {
-    std::cout << user.name << " <" << user.email << ">";
+    std::cout << user.name << " <" << user.email << "> | " << user.exp << " XP";
 
     if (user.connectedUsers.empty()) {
         std::cout << " | connected users: none\n";
@@ -518,8 +541,13 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            userDatabase.connectUsers(argv[2], argv[3]);
-            std::cout << "Users connected: " << argv[2] << " <-> " << argv[3] << '\n';
+            const bool connected = userDatabase.connectUsers(argv[2], argv[3]);
+            if (connected) {
+                std::cout << "Users connected: " << argv[2] << " <-> " << argv[3]
+                          << " (+" << UserDatabase::connectionExpReward << " XP each)\n";
+            } else {
+                std::cout << "Users were already connected: " << argv[2] << " <-> " << argv[3] << '\n';
+            }
             return 0;
         }
 

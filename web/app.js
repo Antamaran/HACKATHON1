@@ -3,7 +3,8 @@ const STORAGE_KEYS = {
     currentUser: 'eventConnect.currentUser',
     users: 'eventConnect.users',
     events: 'eventConnect.events',
-    registrations: 'eventConnect.registrations'
+    registrations: 'eventConnect.registrations',
+    taskCompletions: 'eventConnect.taskCompletions'
 };
 
 const SESSION_KEYS = {
@@ -218,6 +219,10 @@ function getRegistrations() {
     return readStore(STORAGE_KEYS.registrations, {});
 }
 
+function getTaskCompletions() {
+    return readStore(STORAGE_KEYS.taskCompletions, {});
+}
+
 function findUserByEmail(email) {
     return getUsers().find((user) => user.email === email);
 }
@@ -238,12 +243,14 @@ function normalizeEvent(event) {
         ...event,
         inviteEmails: event.inviteEmails || [],
         organizerEmail: event.organizerEmail || '',
+        managerEmails: (event.managerEmails || []).map(normalizeEmail),
         tasks: (event.tasks || []).map(normalizeTask)
     };
 }
 
-function normalizeTask(task) {
+function normalizeTask(task, index) {
     return {
+        id: task.id || createTaskId(task.name || 'task', index),
         name: task.name || '',
         description: task.description || '',
         exp: Number.isFinite(Number(task.exp)) ? Number(task.exp) : 0
@@ -345,6 +352,30 @@ function connectUsers(firstEmail, secondEmail) {
     return true;
 }
 
+function saveEvents(events) {
+    writeStore(STORAGE_KEYS.events, events.map(normalizeEvent));
+}
+
+function updateUserExp(email, expToAdd) {
+    const users = getUsers();
+    const userIndex = users.findIndex((user) => user.email === email);
+    if (userIndex < 0) {
+        return;
+    }
+
+    users[userIndex] = {
+        ...users[userIndex],
+        exp: users[userIndex].exp + expToAdd
+    };
+
+    writeStore(STORAGE_KEYS.users, users);
+
+    const currentUser = getCurrentUser();
+    if (currentUser?.email === email) {
+        writeStore(STORAGE_KEYS.currentUser, users[userIndex]);
+    }
+}
+
 function generateVerificationCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -382,6 +413,16 @@ function createEventId(name) {
         .replace(/^-|-$/g, '');
 
     return `${slug || 'event'}-${Date.now().toString(36)}`;
+}
+
+function createTaskId(name, index) {
+    const slug = String(name)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    return `${slug || 'task'}-${index}`;
 }
 
 function isRegistered(eventId) {
@@ -570,20 +611,61 @@ function renderConnections(user) {
         : '<li class="empty-state">No connected users yet.</li>';
 }
 
-function isOrganizer(event, user) {
-    return Boolean(user && event.organizerEmail && event.organizerEmail === user.email);
+function isEventManager(event, user) {
+    return Boolean(user && (event.organizerEmail === user.email || event.managerEmails.includes(user.email)));
 }
 
-function renderTaskList(tasks) {
-    const taskItems = tasks.map((task) => `
+function getTaskStatus(eventId, taskId, userEmail) {
+    const completions = getTaskCompletions();
+    const taskCompletion = completions[eventId]?.[taskId];
+
+    if (taskCompletion?.approved?.includes(userEmail)) {
+        return 'approved';
+    }
+
+    if (taskCompletion?.pending?.includes(userEmail)) {
+        return 'pending';
+    }
+
+    return 'open';
+}
+
+function renderTaskList(event, user) {
+    const manager = isEventManager(event, user);
+    const taskItems = event.tasks.map((task) => {
+        const status = user ? getTaskStatus(event.id, task.id, user.email) : 'open';
+        const action = !manager && user
+            ? renderTaskAction(event.id, task, status, isRegistered(event.id))
+            : '';
+
+        return `
         <li>
             <strong>${escapeHtml(task.name)}</strong>
             <span>${escapeHtml(task.description)}</span>
             <span class="task-exp">${escapeHtml(task.exp)} XP</span>
+            ${status !== 'open' ? `<span class="task-status">${escapeHtml(status)}</span>` : ''}
+            ${action}
         </li>
-    `).join('');
+    `;
+    }).join('');
 
     return taskItems ? `<ul class="task-list">${taskItems}</ul>` : '<p>No tasks added yet.</p>';
+}
+
+function renderTaskAction(eventId, task, status, registered) {
+    if (status === 'approved') {
+        return '<span class="task-status">XP awarded</span>';
+    }
+
+    if (status === 'pending') {
+        return '<span class="task-status">Waiting for manager approval</span>';
+    }
+
+    if (!registered) {
+        return '<span class="task-status">Register to submit this task</span>';
+    }
+
+    return `<button class="secondary-button" type="button" data-complete-task="${escapeHtml(eventId)}" data-task-id="${escapeHtml(task.id)}">Mark completed</button>`;
 }
 
 function renderInviteLinks(event) {
@@ -600,6 +682,47 @@ function renderInviteLinks(event) {
     return inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : '<p>No invite emails added.</p>';
 }
 
+function renderManagers(event) {
+    const managerItems = event.managerEmails.map((email) => `<li>${escapeHtml(email)}</li>`).join('');
+
+    return `
+        <ul class="manager-list">
+            <li>${escapeHtml(event.organizerEmail || 'Starter event owner')}</li>
+            ${managerItems}
+        </ul>
+        <form class="inline-form" data-manager-form="${escapeHtml(event.id)}">
+            <label>
+                Add event manager
+                <input type="email" name="managerEmail" placeholder="manager@example.com" required>
+            </label>
+            <button type="submit">Add manager</button>
+        </form>
+    `;
+}
+
+function renderPendingApprovals(event) {
+    const completions = getTaskCompletions();
+    const users = getUsers();
+    const approvalItems = event.tasks.flatMap((task) => {
+        const pending = completions[event.id]?.[task.id]?.pending || [];
+        return pending.map((email) => {
+            const user = users.find((item) => item.email === email);
+            const label = user ? `${user.username} <${email}>` : email;
+
+            return `
+                <li>
+                    <strong>${escapeHtml(task.name)}</strong>
+                    <span>${escapeHtml(label)}</span>
+                    <span class="task-exp">${escapeHtml(task.exp)} XP</span>
+                    <button type="button" data-approve-task="${escapeHtml(event.id)}" data-task-id="${escapeHtml(task.id)}" data-user-email="${escapeHtml(email)}">Approve</button>
+                </li>
+            `;
+        });
+    }).join('');
+
+    return approvalItems ? `<ul class="task-list">${approvalItems}</ul>` : '<p>No task completions waiting for approval.</p>';
+}
+
 function openEventDialog(eventId) {
     if (!eventDialog || !dialogType || !dialogTitle || !dialogBody) {
         return;
@@ -614,11 +737,20 @@ function openEventDialog(eventId) {
 
     const locationText = event.location ? event.location : 'No location yet';
     const organizerText = event.organizerEmail ? event.organizerEmail : 'Starter event';
-    const inviteSection = isOrganizer(event, user)
+    const manager = isEventManager(event, user);
+    const managerSections = manager
         ? `
+            <section class="dialog-section">
+                <h3>Managers</h3>
+                ${renderManagers(event)}
+            </section>
             <section class="dialog-section">
                 <h3>Invite links</h3>
                 ${renderInviteLinks(event)}
+            </section>
+            <section class="dialog-section">
+                <h3>Pending task approvals</h3>
+                ${renderPendingApprovals(event)}
             </section>
         `
         : '';
@@ -638,12 +770,104 @@ function openEventDialog(eventId) {
         </section>
         <section class="dialog-section">
             <h3>Tasks</h3>
-            ${renderTaskList(event.tasks)}
+            ${renderTaskList(event, user)}
         </section>
-        ${inviteSection}
+        ${managerSections}
     `;
+    if (!eventDialog.open) {
+        eventDialog.showModal();
+    }
+}
 
-    eventDialog.showModal();
+function addEventManager(eventId, rawEmail) {
+    const email = normalizeEmail(rawEmail);
+    if (!isValidEmail(email)) {
+        return;
+    }
+
+    const events = getEvents();
+    const eventIndex = events.findIndex((event) => event.id === eventId);
+    if (eventIndex < 0) {
+        return;
+    }
+
+    const event = events[eventIndex];
+    const user = getCurrentUser();
+    if (!isEventManager(event, user)) {
+        return;
+    }
+
+    if (event.organizerEmail === email || event.managerEmails.includes(email)) {
+        return;
+    }
+
+    events[eventIndex] = {
+        ...event,
+        managerEmails: [...event.managerEmails, email]
+    };
+
+    saveEvents(events);
+    openEventDialog(eventId);
+    renderDashboard();
+}
+
+function requestTaskCompletion(eventId, taskId) {
+    const user = getCurrentUser();
+    if (!user) {
+        return;
+    }
+
+    if (!isRegistered(eventId)) {
+        return;
+    }
+
+    const completions = getTaskCompletions();
+    const eventCompletions = completions[eventId] || {};
+    const taskCompletion = eventCompletions[taskId] || { pending: [], approved: [] };
+
+    if (!taskCompletion.pending.includes(user.email) && !taskCompletion.approved.includes(user.email)) {
+        taskCompletion.pending.push(user.email);
+    }
+
+    completions[eventId] = {
+        ...eventCompletions,
+        [taskId]: taskCompletion
+    };
+
+    writeStore(STORAGE_KEYS.taskCompletions, completions);
+    openEventDialog(eventId);
+}
+
+function approveTaskCompletion(eventId, taskId, userEmail) {
+    const event = getEvents().find((item) => item.id === eventId);
+    const user = getCurrentUser();
+    if (!event || !isEventManager(event, user)) {
+        return;
+    }
+
+    const task = event.tasks.find((item) => item.id === taskId);
+    if (!task) {
+        return;
+    }
+
+    const completions = getTaskCompletions();
+    const eventCompletions = completions[eventId] || {};
+    const taskCompletion = eventCompletions[taskId] || { pending: [], approved: [] };
+
+    taskCompletion.pending = taskCompletion.pending.filter((email) => email !== userEmail);
+    if (!taskCompletion.approved.includes(userEmail)) {
+        taskCompletion.approved.push(userEmail);
+        updateUserExp(userEmail, task.exp);
+    }
+
+    completions[eventId] = {
+        ...eventCompletions,
+        [taskId]: taskCompletion
+    };
+
+    writeStore(STORAGE_KEYS.taskCompletions, completions);
+    openEventDialog(eventId);
+    renderDashboard();
 }
 
 function showView() {
@@ -806,10 +1030,11 @@ eventForm.addEventListener('submit', (event) => {
         type,
         inviteEmails,
         organizerEmail: user.email,
+        managerEmails: [],
         tasks: draftTasks.map((task) => ({ ...task }))
     });
 
-    writeStore(STORAGE_KEYS.events, events);
+    saveEvents(events);
     eventForm.reset();
     draftTasks = [];
     renderDraftTasks();
@@ -875,7 +1100,33 @@ if (eventDialog) {
     eventDialog.addEventListener('click', (event) => {
         if (event.target === eventDialog) {
             eventDialog.close();
+            return;
         }
+
+        const completeButton = event.target.closest('[data-complete-task]');
+        if (completeButton) {
+            requestTaskCompletion(completeButton.dataset.completeTask, completeButton.dataset.taskId);
+            return;
+        }
+
+        const approveButton = event.target.closest('[data-approve-task]');
+        if (approveButton) {
+            approveTaskCompletion(
+                approveButton.dataset.approveTask,
+                approveButton.dataset.taskId,
+                approveButton.dataset.userEmail
+            );
+        }
+    });
+
+    eventDialog.addEventListener('submit', (event) => {
+        const managerForm = event.target.closest('[data-manager-form]');
+        if (!managerForm) {
+            return;
+        }
+
+        event.preventDefault();
+        addEventManager(managerForm.dataset.managerForm, managerForm.elements.managerEmail.value);
     });
 }
 

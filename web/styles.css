@@ -254,6 +254,20 @@ form {
     gap: 10px;
 }
 
+.qr-scanner {
+    display: grid;
+    gap: 10px;
+}
+
+.qr-scanner video {
+    width: 100%;
+    aspect-ratio: 1;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #111827;
+    object-fit: cover;
+}
+
 .connection-list,
 .notification-list {
     display: grid;

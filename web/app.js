@@ -148,6 +148,10 @@ const copyQrLinkButton = document.querySelector('#copyQrLinkButton');
 const connectionUrlForm = document.querySelector('#connectionUrlForm');
 const connectionUrlInput = document.querySelector('#connectionUrlInput');
 const connectionUrlMessage = document.querySelector('#connectionUrlMessage');
+const scanQrButton = document.querySelector('#scanQrButton');
+const qrScannerPanel = document.querySelector('#qrScannerPanel');
+const qrScannerVideo = document.querySelector('#qrScannerVideo');
+const stopQrScanButton = document.querySelector('#stopQrScanButton');
 const connectionList = document.querySelector('#connectionList');
 const notificationList = document.querySelector('#notificationList');
 
@@ -161,6 +165,9 @@ let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
 let activeConnection = getConnectionFromUrl();
 let draftTasks = [];
+let qrScannerStream = null;
+let qrScanFrameId = null;
+let qrDetector = null;
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
@@ -168,9 +175,9 @@ function readStore(key, fallback) {
     return saved ? JSON.parse(saved) : fallback;
 }
 
-function writeStore(key, value) {
+async function writeStore(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
-    syncStore(key, value);
+    await syncStore(key, value);
 }
 
 function writeLocalStore(key, value) {
@@ -476,6 +483,90 @@ function openPastedConnectionUrl(value) {
     renderDashboard();
 }
 
+function setConnectionUrlMessage(message) {
+    if (connectionUrlMessage) {
+        connectionUrlMessage.textContent = message;
+    }
+}
+
+function stopQrScanner() {
+    if (qrScanFrameId) {
+        cancelAnimationFrame(qrScanFrameId);
+        qrScanFrameId = null;
+    }
+
+    if (qrScannerStream) {
+        qrScannerStream.getTracks().forEach((track) => track.stop());
+        qrScannerStream = null;
+    }
+
+    if (qrScannerVideo) {
+        qrScannerVideo.srcObject = null;
+    }
+
+    qrScannerPanel?.classList.add('hidden');
+    if (scanQrButton) {
+        scanQrButton.disabled = false;
+    }
+}
+
+async function scanQrFrame() {
+    if (!qrDetector || !qrScannerVideo || !qrScannerStream) {
+        return;
+    }
+
+    try {
+        const codes = await qrDetector.detect(qrScannerVideo);
+        const scannedValue = codes.find((code) => code.rawValue)?.rawValue;
+
+        if (scannedValue) {
+            stopQrScanner();
+            if (connectionUrlInput) {
+                connectionUrlInput.value = scannedValue;
+            }
+            openPastedConnectionUrl(scannedValue);
+            return;
+        }
+    } catch {
+        setConnectionUrlMessage('Could not read the QR code yet. Keep it centered in the camera.');
+    }
+
+    qrScanFrameId = requestAnimationFrame(scanQrFrame);
+}
+
+async function startQrScanner() {
+    if (!('BarcodeDetector' in window)) {
+        setConnectionUrlMessage('QR scanning is not supported in this browser. Paste the connection URL instead.');
+        return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+        setConnectionUrlMessage('Camera access is not available. Paste the connection URL instead.');
+        return;
+    }
+
+    try {
+        stopQrScanner();
+        qrDetector = new BarcodeDetector({ formats: ['qr_code'] });
+        qrScannerStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' }
+            },
+            audio: false
+        });
+
+        qrScannerVideo.srcObject = qrScannerStream;
+        await qrScannerVideo.play();
+        qrScannerPanel?.classList.remove('hidden');
+        scanQrButton.disabled = true;
+        setConnectionUrlMessage('Point your camera at a connection QR code.');
+        qrScanFrameId = requestAnimationFrame(scanQrFrame);
+    } catch {
+        stopQrScanner();
+        setConnectionUrlMessage('Camera access was blocked or unavailable. Paste the connection URL instead.');
+    }
+}
+
 function makeInviteLink(eventId, email) {
     const url = new URL('/web/', API_BASE_URL);
     url.searchParams.set('event', eventId);
@@ -607,7 +698,7 @@ function normalizeTask(task, index) {
     };
 }
 
-function saveUser(user) {
+async function saveUser(user) {
     const users = getUsers();
     const normalizedUser = normalizeUser(user);
     const existingIndex = users.findIndex((item) => item.email === normalizedUser.email);
@@ -625,22 +716,23 @@ function saveUser(user) {
         users.push(normalizedUser);
     }
 
-    writeStore(STORAGE_KEYS.users, users);
-    writeStore(STORAGE_KEYS.currentUser, findUserInList(users, normalizedUser.email) || normalizedUser);
+    await writeStore(STORAGE_KEYS.users, users);
+    await writeStore(STORAGE_KEYS.currentUser, findUserInList(users, normalizedUser.email) || normalizedUser);
+    await refreshSharedState();
 }
 
 function findUserInList(users, email) {
     return users.find((user) => user.email === email);
 }
 
-function saveUsers(users) {
-    writeStore(STORAGE_KEYS.users, users.map(normalizeUser));
+async function saveUsers(users) {
+    await writeStore(STORAGE_KEYS.users, users.map(normalizeUser));
 
     const currentUser = readStore(STORAGE_KEYS.currentUser, null);
     if (currentUser) {
         const updatedCurrentUser = findUserInList(users, normalizeEmail(currentUser.email));
         if (updatedCurrentUser) {
-            writeStore(STORAGE_KEYS.currentUser, normalizeUser(updatedCurrentUser));
+            await writeStore(STORAGE_KEYS.currentUser, normalizeUser(updatedCurrentUser));
         }
     }
 }
@@ -2007,13 +2099,13 @@ loginForm.addEventListener('submit', async (event) => {
         return;
     }
 
-    saveUser({ ...existingUser, username });
+    await saveUser({ ...existingUser, username });
     loginForm.reset();
     loginMessage.textContent = '';
     showView();
 });
 
-verificationForm.addEventListener('submit', (event) => {
+verificationForm.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const pendingSignup = readSession(SESSION_KEYS.pendingSignup, null);
@@ -2030,7 +2122,7 @@ verificationForm.addEventListener('submit', (event) => {
     }
 
     const { code, ...verifiedUser } = pendingSignup;
-    saveUser(verifiedUser);
+    await saveUser(verifiedUser);
     sessionStorage.removeItem(SESSION_KEYS.pendingSignup);
     verificationForm.reset();
     loginForm.reset();
@@ -2242,6 +2334,17 @@ if (connectionUrlForm) {
     connectionUrlForm.addEventListener('submit', (event) => {
         event.preventDefault();
         openPastedConnectionUrl(connectionUrlInput.value);
+    });
+}
+
+if (scanQrButton) {
+    scanQrButton.addEventListener('click', startQrScanner);
+}
+
+if (stopQrScanButton) {
+    stopQrScanButton.addEventListener('click', () => {
+        stopQrScanner();
+        setConnectionUrlMessage('');
     });
 }
 

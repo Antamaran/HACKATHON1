@@ -251,6 +251,11 @@
                                 <input type="url" id="connectionUrlInput" placeholder="https://.../?connect=name@example.com">
                             </label>
                             <button type="submit">Open connection</button>
+                            <button class="secondary-button" type="button" id="scanQrButton">Scan QR Code</button>
+                            <div class="qr-scanner hidden" id="qrScannerPanel">
+                                <video id="qrScannerVideo" playsinline muted></video>
+                                <button class="secondary-button" type="button" id="stopQrScanButton">Stop scanning</button>
+                            </div>
                             <p class="form-message" id="connectionUrlMessage"></p>
                         </form>
 

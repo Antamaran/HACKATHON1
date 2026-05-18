@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
 const DAILY_ACCOUNT_XP_CAP = 200;
 const EVENT_REWARD_DELAY_MS = 60 * 60 * 1000;
 const NETLIFY_SITE_URL = 'https://starlit-haupia-07c2f5.netlify.app';
+const API_BASE_URL = window.location.protocol.startsWith('http') ? window.location.origin : NETLIFY_SITE_URL;
 const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.users,
     STORAGE_KEYS.events,
@@ -178,7 +179,7 @@ async function syncStore(key, value) {
     }
 
     try {
-        await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/data`, {
+        await fetch(`${API_BASE_URL}/.netlify/functions/data`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -192,7 +193,7 @@ async function syncStore(key, value) {
 
 async function loadRemoteState() {
     try {
-        const response = await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/data`);
+        const response = await fetch(`${API_BASE_URL}/.netlify/functions/data`);
         if (!response.ok) {
             return;
         }
@@ -208,6 +209,14 @@ async function loadRemoteState() {
     }
 }
 
+async function refreshSharedState() {
+    if (!window.location.protocol.startsWith('http')) {
+        return;
+    }
+
+    await loadRemoteState();
+}
+
 function readSession(key, fallback) {
     const saved = sessionStorage.getItem(key);
     return saved ? JSON.parse(saved) : fallback;
@@ -218,7 +227,7 @@ function writeSession(key, value) {
 }
 
 async function sendEmail(payload) {
-    const response = await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/send-email`, {
+    const response = await fetch(`${API_BASE_URL}/.netlify/functions/send-email`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -333,27 +342,27 @@ function openPastedConnectionUrl(value) {
 }
 
 function makeInviteLink(eventId, email) {
-    const url = new URL('/web/', NETLIFY_SITE_URL);
+    const url = new URL('/web/', API_BASE_URL);
     url.searchParams.set('event', eventId);
     url.searchParams.set('invite', email);
     return url.toString();
 }
 
 function makeEventGameLink(eventId) {
-    const url = new URL('/web/', NETLIFY_SITE_URL);
+    const url = new URL('/web/', API_BASE_URL);
     url.searchParams.set('event', eventId);
     return url.toString();
 }
 
 function makeQrConnectLink(user) {
-    const url = new URL('/web/', NETLIFY_SITE_URL);
+    const url = new URL('/web/', API_BASE_URL);
     url.searchParams.set('connect', user.email);
     url.searchParams.set('name', user.username);
     return url.toString();
 }
 
 function makeParticipantQrLink(eventId, participantId) {
-    const url = new URL('/web/', NETLIFY_SITE_URL);
+    const url = new URL('/web/', API_BASE_URL);
     url.searchParams.set('event', eventId);
     url.searchParams.set('connect', participantId);
     return url.toString();
@@ -1818,8 +1827,9 @@ if (eventLoginButton) {
 }
 
 if (guestJoinForm) {
-    guestJoinForm.addEventListener('submit', (event) => {
+    guestJoinForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        await refreshSharedState();
 
         const eventId = getEventIdFromUrl();
         const targetEvent = getEventById(eventId);
@@ -1945,6 +1955,7 @@ draftTaskList.addEventListener('click', (event) => {
 
 eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    await refreshSharedState();
 
     const user = getCurrentUser();
     const name = document.querySelector('#eventNameInput').value.trim();
@@ -2058,9 +2069,10 @@ if (connectFlow) {
 }
 
 if (eventGameView) {
-    eventGameView.addEventListener('click', (event) => {
+    eventGameView.addEventListener('click', async (event) => {
         const connectButton = event.target.closest('[data-event-connect]');
         if (connectButton) {
+            await refreshSharedState();
             const eventId = getEventIdFromUrl();
             const targetEvent = getEventById(eventId);
             const participant = getCurrentEventParticipant(eventId);
@@ -2076,6 +2088,7 @@ if (eventGameView) {
 
         const completeButton = event.target.closest('[data-complete-task]');
         if (completeButton) {
+            await refreshSharedState();
             requestTaskCompletion(completeButton.dataset.completeTask, completeButton.dataset.taskId);
             const targetEvent = getEventById(getEventIdFromUrl());
             const participant = getCurrentEventParticipant(getEventIdFromUrl());
@@ -2203,8 +2216,9 @@ async function initializeApp() {
 
 initializeApp();
 
-setInterval(() => {
+setInterval(async () => {
     if (getCurrentUser()) {
-        renderDashboard();
+        await refreshSharedState();
+        showView();
     }
 }, 60 * 1000);

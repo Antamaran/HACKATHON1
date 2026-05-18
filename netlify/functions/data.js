@@ -4,6 +4,7 @@ const allowedKeys = new Set([
   'eventConnect.users',
   'eventConnect.events',
   'eventConnect.registrations',
+  'eventConnect.eventParticipants',
   'eventConnect.taskCompletions',
   'eventConnect.eventRewards',
   'eventConnect.notifications'
@@ -33,7 +34,7 @@ exports.handler = async (event) => {
     const state = {};
 
     await Promise.all(Array.from(allowedKeys).map(async (key) => {
-      state[key] = await store.get(key, { type: 'json' });
+      state[key] = await store.get(key, { type: 'json' }).catch(() => null);
     }));
 
     return json(200, { state });

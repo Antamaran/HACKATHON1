@@ -2,3 +2,4 @@ event_app
 event_app.exe
 emails.db
 users.db
+events.db

@@ -39,3 +39,19 @@ Use it:
 ./event_app count
 ```
 
+## Event database
+
+The app also stores events in `events.db`.
+Each event has an id, name, description, optional location, and type.
+The accepted event types are `profesional` and `leisure`.
+
+Use it:
+
+```bash
+./event_app event-add event-001 "Coffee Match" "Meet someone new over coffee" "Main hall" leisure
+./event_app event-add event-002 "Product Workshop" "Build a quick demo together" profesional
+./event_app event-show event-001
+./event_app event-list
+./event_app event-count
+```
+

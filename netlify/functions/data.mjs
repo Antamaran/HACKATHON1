@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+import { getStore } from '@netlify/blobs';
 
 const allowedKeys = new Set([
   'eventConnect.users',
@@ -10,17 +10,16 @@ const allowedKeys = new Set([
   'eventConnect.notifications'
 ]);
 
-function json(statusCode, body) {
-  return {
-    statusCode,
+function response(statusCode, body) {
+  return new Response(JSON.stringify(body), {
+    status: statusCode,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
-    },
-    body: JSON.stringify(body)
-  };
+    }
+  });
 }
 
 function uniqueArray(values) {
@@ -29,6 +28,7 @@ function uniqueArray(values) {
 
 function mergeArraysById(existing, incoming, idField) {
   const items = new Map();
+
   [...(existing || []), ...(incoming || [])].forEach((item) => {
     if (!item || !item[idField]) {
       return;
@@ -45,16 +45,20 @@ function mergeArraysById(existing, incoming, idField) {
 
 function mergeRegistrations(existing, incoming) {
   const merged = { ...(existing || {}) };
+
   Object.entries(incoming || {}).forEach(([eventId, emails]) => {
     merged[eventId] = uniqueArray([...(merged[eventId] || []), ...(emails || [])]);
   });
+
   return merged;
 }
 
 function mergeTaskCompletions(existing, incoming) {
   const merged = { ...(existing || {}) };
+
   Object.entries(incoming || {}).forEach(([eventId, tasks]) => {
     merged[eventId] = { ...(merged[eventId] || {}) };
+
     Object.entries(tasks || {}).forEach(([taskId, completion]) => {
       const current = merged[eventId][taskId] || {};
       merged[eventId][taskId] = {
@@ -63,11 +67,13 @@ function mergeTaskCompletions(existing, incoming) {
       };
     });
   });
+
   return merged;
 }
 
 function mergeParticipants(existing, incoming) {
   const participants = new Map();
+
   [...(existing || []), ...(incoming || [])].forEach((participant) => {
     if (!participant?.id) {
       return;
@@ -90,6 +96,7 @@ function mergeParticipants(existing, incoming) {
 
 function mergeUsers(existing, incoming) {
   const users = new Map();
+
   [...(existing || []), ...(incoming || [])].forEach((user) => {
     if (!user?.email) {
       return;
@@ -140,40 +147,45 @@ function mergeValue(key, existing, incoming) {
   return incoming;
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return json(200, { ok: true });
+export default async (request) => {
+  if (request.method === 'OPTIONS') {
+    return response(200, { ok: true });
   }
 
   const store = getStore('event-connect-state');
 
-  if (event.httpMethod === 'GET') {
+  if (request.method === 'GET') {
     const state = {};
 
     await Promise.all(Array.from(allowedKeys).map(async (key) => {
       state[key] = await store.get(key, { type: 'json' }).catch(() => null);
     }));
 
-    return json(200, { state });
+    return response(200, { state });
   }
 
-  if (event.httpMethod === 'POST') {
+  if (request.method === 'POST') {
     let payload;
     try {
-      payload = JSON.parse(event.body || '{}');
+      payload = JSON.parse(await request.text());
     } catch {
-      return json(400, { error: 'Invalid JSON body' });
+      return response(400, { error: 'Invalid JSON body' });
     }
 
     if (!allowedKeys.has(payload.key)) {
-      return json(400, { error: 'Unsupported storage key' });
+      return response(400, { error: 'Unsupported storage key' });
     }
 
     const existing = await store.get(payload.key, { type: 'json' }).catch(() => null);
     const merged = mergeValue(payload.key, existing, payload.value);
+
     await store.setJSON(payload.key, merged);
-    return json(200, { ok: true, value: merged });
+    return response(200, { ok: true, value: merged });
   }
 
-  return json(405, { error: 'Method not allowed' });
+  return response(405, { error: 'Method not allowed' });
+};
+
+export const config = {
+  path: '/.netlify/functions/data'
 };

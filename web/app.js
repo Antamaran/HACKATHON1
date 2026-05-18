@@ -13,7 +13,11 @@ const STORAGE_KEYS = {
 const DAILY_ACCOUNT_XP_CAP = 200;
 const EVENT_REWARD_DELAY_MS = 60 * 60 * 1000;
 const NETLIFY_SITE_URL = 'https://starlit-haupia-07c2f5.netlify.app';
-const API_BASE_URL = window.location.protocol.startsWith('http') ? window.location.origin : NETLIFY_SITE_URL;
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
+const API_BASE_URL = window.location.protocol.startsWith('http') && !LOCAL_HOSTNAMES.has(window.location.hostname)
+    ? window.location.origin
+    : NETLIFY_SITE_URL;
+const REMOTE_REFRESH_INTERVAL_MS = 10 * 1000;
 const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.users,
     STORAGE_KEYS.events,
@@ -2352,4 +2356,4 @@ setInterval(async () => {
         await refreshSharedState();
         showView();
     }
-}, 60 * 1000);
+}, REMOTE_REFRESH_INTERVAL_MS);

@@ -85,9 +85,14 @@ const userCount = document.querySelector('#userCount');
 const userExp = document.querySelector('#userExp');
 const addTaskButton = document.querySelector('#addTaskButton');
 const draftTaskList = document.querySelector('#draftTaskList');
+const connectFlow = document.querySelector('#connectFlow');
+const userQrImage = document.querySelector('#userQrImage');
+const userQrLink = document.querySelector('#userQrLink');
+const connectionList = document.querySelector('#connectionList');
 
 let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
+let activeConnection = getConnectionFromUrl();
 let draftTasks = [];
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
@@ -141,10 +146,39 @@ function getInviteFromUrl() {
     };
 }
 
+function getConnectionFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('connect');
+
+    if (!email) {
+        return null;
+    }
+
+    return {
+        email: normalizeEmail(email),
+        username: params.get('name')?.trim() || ''
+    };
+}
+
 function makeInviteLink(eventId, email) {
     const url = new URL(window.location.href);
     url.searchParams.set('event', eventId);
     url.searchParams.set('invite', email);
+    return url.toString();
+}
+
+function makeQrConnectLink(user) {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('connect', user.email);
+    url.searchParams.set('name', user.username);
+    return url.toString();
+}
+
+function makeQrImageUrl(value) {
+    const url = new URL('https://api.qrserver.com/v1/create-qr-code/');
+    url.searchParams.set('size', '220x220');
+    url.searchParams.set('data', value);
     return url.toString();
 }
 
@@ -158,7 +192,12 @@ function parseInviteEmails(value) {
 
 function getCurrentUser() {
     const user = readStore(STORAGE_KEYS.currentUser, null);
-    return user ? normalizeUser(user) : null;
+    if (!user) {
+        return null;
+    }
+
+    const normalizedUser = normalizeUser(user);
+    return findUserByEmail(normalizedUser.email) || normalizedUser;
 }
 
 function getUsers() {
@@ -181,7 +220,10 @@ function normalizeUser(user) {
     return {
         username: user.username,
         email: user.email,
-        exp: Number.isFinite(Number(user.exp)) ? Number(user.exp) : 0
+        exp: Number.isFinite(Number(user.exp)) ? Number(user.exp) : 0,
+        connectedUsers: Array.isArray(user.connectedUsers)
+            ? user.connectedUsers.map(normalizeEmail).filter(Boolean)
+            : []
     };
 }
 
@@ -209,13 +251,82 @@ function saveUser(user) {
 
     // Email acts like the unique user id: logging in again updates the username.
     if (existingIndex >= 0) {
-        users[existingIndex] = normalizedUser;
+        users[existingIndex] = {
+            ...users[existingIndex],
+            ...normalizedUser,
+            connectedUsers: normalizedUser.connectedUsers.length
+                ? normalizedUser.connectedUsers
+                : users[existingIndex].connectedUsers
+        };
     } else {
         users.push(normalizedUser);
     }
 
     writeStore(STORAGE_KEYS.users, users);
-    writeStore(STORAGE_KEYS.currentUser, normalizedUser);
+    writeStore(STORAGE_KEYS.currentUser, findUserInList(users, normalizedUser.email) || normalizedUser);
+}
+
+function findUserInList(users, email) {
+    return users.find((user) => user.email === email);
+}
+
+function saveUsers(users) {
+    writeStore(STORAGE_KEYS.users, users.map(normalizeUser));
+
+    const currentUser = readStore(STORAGE_KEYS.currentUser, null);
+    if (currentUser) {
+        const updatedCurrentUser = findUserInList(users, normalizeEmail(currentUser.email));
+        if (updatedCurrentUser) {
+            writeStore(STORAGE_KEYS.currentUser, normalizeUser(updatedCurrentUser));
+        }
+    }
+}
+
+function ensureScannedUser(connection) {
+    if (!connection || !isValidEmail(connection.email)) {
+        return null;
+    }
+
+    const users = getUsers();
+    const existingUser = findUserInList(users, connection.email);
+    if (existingUser) {
+        if (connection.username && existingUser.username !== connection.username) {
+            existingUser.username = connection.username;
+            saveUsers(users);
+        }
+
+        return existingUser;
+    }
+
+    const scannedUser = normalizeUser({
+        username: connection.username || connection.email.split('@')[0],
+        email: connection.email,
+        exp: 0,
+        connectedUsers: []
+    });
+
+    users.push(scannedUser);
+    saveUsers(users);
+    return scannedUser;
+}
+
+function connectUsers(firstEmail, secondEmail) {
+    if (firstEmail === secondEmail) {
+        return false;
+    }
+
+    const users = getUsers();
+    const firstUser = findUserInList(users, firstEmail);
+    const secondUser = findUserInList(users, secondEmail);
+
+    if (!firstUser || !secondUser) {
+        return false;
+    }
+
+    firstUser.connectedUsers = Array.from(new Set([...firstUser.connectedUsers, secondEmail]));
+    secondUser.connectedUsers = Array.from(new Set([...secondUser.connectedUsers, firstEmail]));
+    saveUsers(users);
+    return true;
 }
 
 function generateVerificationCode() {
@@ -357,6 +468,7 @@ function renderDashboard() {
     userCount.textContent = String(users.length);
     userExp.textContent = String(user?.exp || 0);
     eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.map(renderEventCard).join('')}`;
+    renderProfile(user);
 }
 
 function renderInviteNotice(user) {
@@ -382,6 +494,74 @@ function renderInviteNotice(user) {
     return `<div class="invite-notice">Invite opened for ${escapeHtml(event.name)}. Use the register button on this event card.</div>`;
 }
 
+function renderProfile(user) {
+    if (!user) {
+        return;
+    }
+
+    const qrLink = makeQrConnectLink(user);
+    userQrImage.src = makeQrImageUrl(qrLink);
+    userQrLink.href = qrLink;
+    userQrLink.textContent = qrLink;
+
+    renderConnectFlow(user);
+    renderConnections(user);
+}
+
+function renderConnectFlow(user) {
+    if (!activeConnection) {
+        connectFlow.classList.add('hidden');
+        connectFlow.innerHTML = '';
+        return;
+    }
+
+    const targetUser = ensureScannedUser(activeConnection);
+    if (!targetUser) {
+        connectFlow.classList.remove('hidden');
+        connectFlow.innerHTML = '<p class="form-message">This QR code is not valid.</p>';
+        return;
+    }
+
+    const isSelf = targetUser.email === user.email;
+    const isConnected = user.connectedUsers.includes(targetUser.email);
+
+    if (isSelf) {
+        connectFlow.classList.remove('hidden');
+        connectFlow.innerHTML = `
+            <p class="eyebrow">QR opened</p>
+            <h3>You scanned your own QR code</h3>
+            <p class="helper-text">Share this QR with someone else so they can connect with you.</p>
+        `;
+        return;
+    }
+
+    connectFlow.classList.remove('hidden');
+    connectFlow.innerHTML = `
+        <p class="eyebrow">QR scanned</p>
+        <h3>Connect with ${escapeHtml(targetUser.username)}</h3>
+        <p class="helper-text">${escapeHtml(targetUser.email)}</p>
+        <button type="button" data-connect-user="${escapeHtml(targetUser.email)}" ${isConnected ? 'disabled' : ''}>
+            ${isConnected ? 'Connected' : 'Connect with user'}
+        </button>
+    `;
+}
+
+function renderConnections(user) {
+    const users = getUsers();
+    const connectedUsers = user.connectedUsers
+        .map((email) => findUserInList(users, email) || { username: email, email })
+        .sort((first, second) => first.username.localeCompare(second.username));
+
+    connectionList.innerHTML = connectedUsers.length
+        ? connectedUsers.map((connectedUser) => `
+            <li>
+                <strong>${escapeHtml(connectedUser.username)}</strong>
+                <span>${escapeHtml(connectedUser.email)}</span>
+            </li>
+        `).join('')
+        : '<li class="empty-state">No connected users yet.</li>';
+}
+
 function showView() {
     const user = getCurrentUser();
     const pendingSignup = readSession(SESSION_KEYS.pendingSignup, null);
@@ -394,6 +574,9 @@ function showView() {
 
     if (pendingSignup) {
         demoCodeBox.textContent = `Local demo email code for ${pendingSignup.email}: ${pendingSignup.code}`;
+    } else if (!user && activeConnection?.email) {
+        document.querySelector('#emailInput').value = '';
+        loginMessage.textContent = 'Log in or sign up, then you can connect with the user from this QR code.';
     } else if (!user && activeInvite?.inviteEmail) {
         document.querySelector('#emailInput').value = activeInvite.inviteEmail;
     }
@@ -571,6 +754,22 @@ eventGrid.addEventListener('click', (event) => {
     }
 
     toggleRegistration(eventId);
+});
+
+connectFlow.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-connect-user]');
+    if (!button) {
+        return;
+    }
+
+    const user = getCurrentUser();
+    const targetEmail = normalizeEmail(button.dataset.connectUser);
+    if (!user || !targetEmail) {
+        return;
+    }
+
+    connectUsers(user.email, targetEmail);
+    renderDashboard();
 });
 
 filterButtons.forEach((button) => {

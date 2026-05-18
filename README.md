@@ -31,6 +31,10 @@ log in and register.
 Users have an XP value, starting at `0 XP`. Event organizers can add tasks to
 their events, and each task has a name, description, and XP value.
 
+Each signed-in user also gets a personal QR code in their profile panel. The QR
+code opens a connection page with a `Connect with user` button. After connecting,
+both users appear in each other's connected users list in the local browser data.
+
 Run it locally:
 
 ```bash

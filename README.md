@@ -17,3 +17,25 @@ At the end, there is a podium with the participants who earned the most points.
 
 Later, we can think of other games to make the event even more fun!
 
+## User database
+
+The C++ app includes a tiny local user database for participants.
+It stores each user's name, email, and connected users in `users.db`.
+
+Compile it:
+
+```bash
+g++ main.cpp -std=c++17 -o event_app
+```
+
+Use it:
+
+```bash
+./event_app add "Ada Lovelace" ada@example.com
+./event_app add "Grace Hopper" grace@example.com
+./event_app connect ada@example.com grace@example.com
+./event_app show ada@example.com
+./event_app list
+./event_app count
+```
+

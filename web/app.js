@@ -173,19 +173,144 @@ function writeLocalStore(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
+function sameJson(first, second) {
+    return JSON.stringify(first) === JSON.stringify(second);
+}
+
+function uniqueValues(values) {
+    return Array.from(new Set((values || []).filter(Boolean)));
+}
+
+function mergeArraysByField(existing, incoming, field) {
+    const items = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((item) => {
+        if (!item || !item[field]) {
+            return;
+        }
+
+        items.set(item[field], {
+            ...(items.get(item[field]) || {}),
+            ...item
+        });
+    });
+
+    return Array.from(items.values());
+}
+
+function mergeRegistrations(existing, incoming) {
+    const merged = { ...(existing || {}) };
+    Object.entries(incoming || {}).forEach(([eventId, emails]) => {
+        merged[eventId] = uniqueValues([...(merged[eventId] || []), ...(emails || [])]);
+    });
+    return merged;
+}
+
+function mergeParticipants(existing, incoming) {
+    const participants = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((participant) => {
+        if (!participant?.id) {
+            return;
+        }
+
+        const current = participants.get(participant.id) || {};
+        participants.set(participant.id, {
+            ...current,
+            ...participant,
+            eventXp: Math.max(Number(current.eventXp || 0), Number(participant.eventXp || 0)),
+            connectedParticipantIds: uniqueValues([
+                ...(current.connectedParticipantIds || []),
+                ...(participant.connectedParticipantIds || [])
+            ])
+        });
+    });
+
+    return Array.from(participants.values());
+}
+
+function mergeUsers(existing, incoming) {
+    const users = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((user) => {
+        if (!user?.email) {
+            return;
+        }
+
+        const current = users.get(user.email) || {};
+        users.set(user.email, {
+            ...current,
+            ...user,
+            exp: Math.max(Number(current.exp || 0), Number(user.exp || 0)),
+            connectedUsers: uniqueValues([
+                ...(current.connectedUsers || []),
+                ...(user.connectedUsers || [])
+            ])
+        });
+    });
+
+    return Array.from(users.values());
+}
+
+function mergeTaskCompletions(existing, incoming) {
+    const merged = { ...(existing || {}) };
+    Object.entries(incoming || {}).forEach(([eventId, tasks]) => {
+        merged[eventId] = { ...(merged[eventId] || {}) };
+        Object.entries(tasks || {}).forEach(([taskId, completion]) => {
+            const current = merged[eventId][taskId] || {};
+            merged[eventId][taskId] = {
+                pending: uniqueValues([...(current.pending || []), ...(completion.pending || [])]),
+                approved: uniqueValues([...(current.approved || []), ...(completion.approved || [])])
+            };
+        });
+    });
+    return merged;
+}
+
+function mergeSharedValue(key, existing, incoming) {
+    if (key === STORAGE_KEYS.events) {
+        return mergeArraysByField(existing, incoming, 'id');
+    }
+
+    if (key === STORAGE_KEYS.users) {
+        return mergeUsers(existing, incoming);
+    }
+
+    if (key === STORAGE_KEYS.eventParticipants) {
+        return mergeParticipants(existing, incoming);
+    }
+
+    if (key === STORAGE_KEYS.registrations) {
+        return mergeRegistrations(existing, incoming);
+    }
+
+    if (key === STORAGE_KEYS.taskCompletions) {
+        return mergeTaskCompletions(existing, incoming);
+    }
+
+    if (key === STORAGE_KEYS.eventRewards || key === STORAGE_KEYS.notifications) {
+        return Array.isArray(existing) || Array.isArray(incoming)
+            ? mergeArraysByField(existing, incoming, 'id')
+            : { ...(existing || {}), ...(incoming || {}) };
+    }
+
+    return incoming;
+}
+
 async function syncStore(key, value) {
     if (!REMOTE_STORAGE_KEYS.includes(key)) {
         return;
     }
 
     try {
-        await fetch(`${API_BASE_URL}/.netlify/functions/data`, {
+        const response = await fetch(`${API_BASE_URL}/.netlify/functions/data`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ key, value })
         });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.value !== undefined) {
+            writeLocalStore(key, data.value);
+        }
     } catch {
         // Offline/local dev can keep using localStorage.
     }
@@ -201,7 +326,13 @@ async function loadRemoteState() {
         const data = await response.json();
         Object.entries(data.state || {}).forEach(([key, value]) => {
             if (REMOTE_STORAGE_KEYS.includes(key) && value !== null && value !== undefined) {
-                writeLocalStore(key, value);
+                const localValue = readStore(key, Array.isArray(value) ? [] : {});
+                const mergedValue = mergeSharedValue(key, localValue, value);
+                writeLocalStore(key, mergedValue);
+
+                if (!sameJson(mergedValue, value)) {
+                    syncStore(key, mergedValue);
+                }
             }
         });
     } catch {
@@ -2207,7 +2338,7 @@ logoutButton.addEventListener('click', () => {
 async function initializeApp() {
     await loadRemoteState();
 
-    if (!localStorage.getItem(STORAGE_KEYS.events)) {
+    if (!localStorage.getItem(STORAGE_KEYS.events) || getEvents().length === 0) {
         writeStore(STORAGE_KEYS.events, seedEvents);
     }
 

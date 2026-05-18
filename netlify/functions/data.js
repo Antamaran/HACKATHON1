@@ -23,6 +23,123 @@ function json(statusCode, body) {
   };
 }
 
+function uniqueArray(values) {
+  return Array.from(new Set((values || []).filter(Boolean)));
+}
+
+function mergeArraysById(existing, incoming, idField) {
+  const items = new Map();
+  [...(existing || []), ...(incoming || [])].forEach((item) => {
+    if (!item || !item[idField]) {
+      return;
+    }
+
+    items.set(item[idField], {
+      ...(items.get(item[idField]) || {}),
+      ...item
+    });
+  });
+
+  return Array.from(items.values());
+}
+
+function mergeRegistrations(existing, incoming) {
+  const merged = { ...(existing || {}) };
+  Object.entries(incoming || {}).forEach(([eventId, emails]) => {
+    merged[eventId] = uniqueArray([...(merged[eventId] || []), ...(emails || [])]);
+  });
+  return merged;
+}
+
+function mergeTaskCompletions(existing, incoming) {
+  const merged = { ...(existing || {}) };
+  Object.entries(incoming || {}).forEach(([eventId, tasks]) => {
+    merged[eventId] = { ...(merged[eventId] || {}) };
+    Object.entries(tasks || {}).forEach(([taskId, completion]) => {
+      const current = merged[eventId][taskId] || {};
+      merged[eventId][taskId] = {
+        pending: uniqueArray([...(current.pending || []), ...(completion.pending || [])]),
+        approved: uniqueArray([...(current.approved || []), ...(completion.approved || [])])
+      };
+    });
+  });
+  return merged;
+}
+
+function mergeParticipants(existing, incoming) {
+  const participants = new Map();
+  [...(existing || []), ...(incoming || [])].forEach((participant) => {
+    if (!participant?.id) {
+      return;
+    }
+
+    const current = participants.get(participant.id) || {};
+    participants.set(participant.id, {
+      ...current,
+      ...participant,
+      eventXp: Math.max(Number(current.eventXp || 0), Number(participant.eventXp || 0)),
+      connectedParticipantIds: uniqueArray([
+        ...(current.connectedParticipantIds || []),
+        ...(participant.connectedParticipantIds || [])
+      ])
+    });
+  });
+
+  return Array.from(participants.values());
+}
+
+function mergeUsers(existing, incoming) {
+  const users = new Map();
+  [...(existing || []), ...(incoming || [])].forEach((user) => {
+    if (!user?.email) {
+      return;
+    }
+
+    const current = users.get(user.email) || {};
+    users.set(user.email, {
+      ...current,
+      ...user,
+      exp: Math.max(Number(current.exp || 0), Number(user.exp || 0)),
+      connectedUsers: uniqueArray([
+        ...(current.connectedUsers || []),
+        ...(user.connectedUsers || [])
+      ])
+    });
+  });
+
+  return Array.from(users.values());
+}
+
+function mergeValue(key, existing, incoming) {
+  if (key === 'eventConnect.events') {
+    return mergeArraysById(existing, incoming, 'id');
+  }
+
+  if (key === 'eventConnect.users') {
+    return mergeUsers(existing, incoming);
+  }
+
+  if (key === 'eventConnect.eventParticipants') {
+    return mergeParticipants(existing, incoming);
+  }
+
+  if (key === 'eventConnect.registrations') {
+    return mergeRegistrations(existing, incoming);
+  }
+
+  if (key === 'eventConnect.taskCompletions') {
+    return mergeTaskCompletions(existing, incoming);
+  }
+
+  if (key === 'eventConnect.eventRewards' || key === 'eventConnect.notifications') {
+    return Array.isArray(existing) || Array.isArray(incoming)
+      ? mergeArraysById(existing, incoming, 'id')
+      : { ...(existing || {}), ...(incoming || {}) };
+  }
+
+  return incoming;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return json(200, { ok: true });
@@ -52,8 +169,10 @@ exports.handler = async (event) => {
       return json(400, { error: 'Unsupported storage key' });
     }
 
-    await store.setJSON(payload.key, payload.value);
-    return json(200, { ok: true });
+    const existing = await store.get(payload.key, { type: 'json' }).catch(() => null);
+    const merged = mergeValue(payload.key, existing, payload.value);
+    await store.setJSON(payload.key, merged);
+    return json(200, { ok: true, value: merged });
   }
 
   return json(405, { error: 'Method not allowed' });

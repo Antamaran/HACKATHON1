@@ -46,6 +46,8 @@ notifications list when the app is opened or refreshed after the reward time.
 Each signed-in user also gets a personal QR code in their profile panel. The QR
 code opens a connection page with a `Connect with user` button. After connecting,
 both users appear in each other's connected users list and receive `10 XP`.
+Users can also copy their personal connection URL from the profile panel and send
+it directly.
 
 Run it locally:
 

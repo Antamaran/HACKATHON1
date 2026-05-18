@@ -101,6 +101,7 @@ const draftTaskList = document.querySelector('#draftTaskList');
 const connectFlow = document.querySelector('#connectFlow');
 const userQrImage = document.querySelector('#userQrImage');
 const userQrLink = document.querySelector('#userQrLink');
+const copyQrLinkButton = document.querySelector('#copyQrLinkButton');
 const connectionList = document.querySelector('#connectionList');
 const notificationList = document.querySelector('#notificationList');
 
@@ -176,7 +177,7 @@ function getInviteFromUrl() {
 
 function getConnectionFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const email = params.get('connect');
+    const email = params.get('connect') || params.get('user');
 
     if (!email) {
         return null;
@@ -184,7 +185,7 @@ function getConnectionFromUrl() {
 
     return {
         email: normalizeEmail(email),
-        username: params.get('name')?.trim() || ''
+        username: (params.get('name') || params.get('username'))?.trim() || ''
     };
 }
 
@@ -679,6 +680,7 @@ function renderProfile(user) {
         userQrImage.src = makeQrImageUrl(qrLink);
         userQrLink.href = qrLink;
         userQrLink.textContent = qrLink;
+        userQrLink.dataset.connectionLink = qrLink;
     }
 
     renderConnectFlow(user);
@@ -747,6 +749,23 @@ function renderConnections(user) {
             </li>
         `).join('')
         : '<li class="empty-state">No connected users yet.</li>';
+}
+
+async function copyConnectionLink() {
+    if (!userQrLink?.dataset.connectionLink) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(userQrLink.dataset.connectionLink);
+        copyQrLinkButton.textContent = 'Copied';
+    } catch {
+        copyQrLinkButton.textContent = 'Copy failed';
+    }
+
+    setTimeout(() => {
+        copyQrLinkButton.textContent = 'Copy connection link';
+    }, 1800);
 }
 
 function renderNotifications(user) {
@@ -1279,6 +1298,10 @@ if (connectFlow) {
         connectUsers(user.email, targetEmail);
         renderDashboard();
     });
+}
+
+if (copyQrLinkButton) {
+    copyQrLinkButton.addEventListener('click', copyConnectionLink);
 }
 
 if (closeDialogButton && eventDialog) {

@@ -102,6 +102,9 @@ const connectFlow = document.querySelector('#connectFlow');
 const userQrImage = document.querySelector('#userQrImage');
 const userQrLink = document.querySelector('#userQrLink');
 const copyQrLinkButton = document.querySelector('#copyQrLinkButton');
+const connectionUrlForm = document.querySelector('#connectionUrlForm');
+const connectionUrlInput = document.querySelector('#connectionUrlInput');
+const connectionUrlMessage = document.querySelector('#connectionUrlMessage');
 const connectionList = document.querySelector('#connectionList');
 const notificationList = document.querySelector('#notificationList');
 
@@ -176,7 +179,17 @@ function getInviteFromUrl() {
 }
 
 function getConnectionFromUrl() {
-    const params = new URLSearchParams(window.location.search);
+    return parseConnectionUrl(window.location.href);
+}
+
+function parseConnectionUrl(value) {
+    let params;
+    try {
+        params = new URL(value).searchParams;
+    } catch {
+        params = new URLSearchParams(value.startsWith('?') ? value : `?${value}`);
+    }
+
     const email = params.get('connect') || params.get('user');
 
     if (!email) {
@@ -187,6 +200,19 @@ function getConnectionFromUrl() {
         email: normalizeEmail(email),
         username: (params.get('name') || params.get('username'))?.trim() || ''
     };
+}
+
+function openPastedConnectionUrl(value) {
+    const connection = parseConnectionUrl(value.trim());
+
+    if (!connection || !isValidEmail(connection.email)) {
+        connectionUrlMessage.textContent = 'Paste a valid connection URL.';
+        return;
+    }
+
+    activeConnection = connection;
+    connectionUrlMessage.textContent = '';
+    renderDashboard();
 }
 
 function makeInviteLink(eventId, email) {
@@ -1302,6 +1328,13 @@ if (connectFlow) {
 
 if (copyQrLinkButton) {
     copyQrLinkButton.addEventListener('click', copyConnectionLink);
+}
+
+if (connectionUrlForm) {
+    connectionUrlForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        openPastedConnectionUrl(connectionUrlInput.value);
+    });
 }
 
 if (closeDialogButton && eventDialog) {

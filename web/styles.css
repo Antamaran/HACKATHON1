@@ -249,6 +249,11 @@ form {
     text-align: center;
 }
 
+.paste-link-form {
+    display: grid;
+    gap: 10px;
+}
+
 .connection-list,
 .notification-list {
     display: grid;

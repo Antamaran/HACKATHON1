@@ -47,7 +47,8 @@ Each signed-in user also gets a personal QR code in their profile panel. The QR
 code opens a connection page with a `Connect with user` button. After connecting,
 both users appear in each other's connected users list and receive `10 XP`.
 Users can also copy their personal connection URL from the profile panel and send
-it directly.
+it directly. Someone else can paste that URL into the profile panel to open the
+same connection flow without scanning the QR code.
 
 Run it locally:
 

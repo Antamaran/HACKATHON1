@@ -119,6 +119,15 @@
                             <button class="secondary-button" type="button" id="copyQrLinkButton">Copy connection link</button>
                         </div>
 
+                        <form class="paste-link-form" id="connectionUrlForm">
+                            <label>
+                                Paste connection URL
+                                <input type="url" id="connectionUrlInput" placeholder="https://.../?connect=name@example.com">
+                            </label>
+                            <button type="submit">Open connection</button>
+                            <p class="form-message" id="connectionUrlMessage"></p>
+                        </form>
+
                         <div>
                             <h3 class="compact-title">Connected users</h3>
                             <ul class="connection-list" id="connectionList"></ul>

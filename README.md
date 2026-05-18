@@ -77,7 +77,7 @@ Deploy from Git:
 
 ```text
 Build command: leave empty
-Publish directory: web
+Publish directory: .
 ```
 
 5. Deploy the site.
@@ -88,8 +88,17 @@ The app will work on a Netlify URL such as:
 https://your-site-name.netlify.app
 ```
 
-Invite links and connection links will automatically use the Netlify domain once
-users open the deployed site.
+Invite links and connection links are configured for:
+
+```text
+https://starlit-haupia-07c2f5.netlify.app
+```
+
+The root page redirects into the app at:
+
+```text
+https://starlit-haupia-07c2f5.netlify.app/web/
+```
 
 ### Email on Netlify
 

@@ -4,7 +4,10 @@ function json(statusCode, body) {
   return {
     statusCode,
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'POST,OPTIONS'
     },
     body: JSON.stringify(body)
   };
@@ -44,6 +47,10 @@ function buildInviteEmail({ to, eventName, inviteLink }) {
 }
 
 exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return json(200, { ok: true });
+  }
+
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' });
   }

@@ -13,13 +13,20 @@ function json(statusCode, body) {
   return {
     statusCode,
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
     },
     body: JSON.stringify(body)
   };
 }
 
 exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return json(200, { ok: true });
+  }
+
   const store = getStore('event-connect-state');
 
   if (event.httpMethod === 'GET') {

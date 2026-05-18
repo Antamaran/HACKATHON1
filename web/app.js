@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
 
 const DAILY_ACCOUNT_XP_CAP = 200;
 const EVENT_REWARD_DELAY_MS = 60 * 60 * 1000;
+const NETLIFY_SITE_URL = 'https://starlit-haupia-07c2f5.netlify.app';
 const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.users,
     STORAGE_KEYS.events,
@@ -148,7 +149,7 @@ async function syncStore(key, value) {
     }
 
     try {
-        await fetch('/.netlify/functions/data', {
+        await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/data`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -162,7 +163,7 @@ async function syncStore(key, value) {
 
 async function loadRemoteState() {
     try {
-        const response = await fetch('/.netlify/functions/data');
+        const response = await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/data`);
         if (!response.ok) {
             return;
         }
@@ -188,7 +189,7 @@ function writeSession(key, value) {
 }
 
 async function sendEmail(payload) {
-    const response = await fetch('/.netlify/functions/send-email', {
+    const response = await fetch(`${NETLIFY_SITE_URL}/.netlify/functions/send-email`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -283,15 +284,14 @@ function openPastedConnectionUrl(value) {
 }
 
 function makeInviteLink(eventId, email) {
-    const url = new URL(window.location.href);
+    const url = new URL('/web/', NETLIFY_SITE_URL);
     url.searchParams.set('event', eventId);
     url.searchParams.set('invite', email);
     return url.toString();
 }
 
 function makeQrConnectLink(user) {
-    const url = new URL(window.location.href);
-    url.search = '';
+    const url = new URL('/web/', NETLIFY_SITE_URL);
     url.searchParams.set('connect', user.email);
     url.searchParams.set('name', user.username);
     return url.toString();

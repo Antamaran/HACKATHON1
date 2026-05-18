@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
     users: 'eventConnect.users',
     events: 'eventConnect.events',
     registrations: 'eventConnect.registrations',
+    eventParticipants: 'eventConnect.eventParticipants',
     taskCompletions: 'eventConnect.taskCompletions',
     eventRewards: 'eventConnect.eventRewards',
     notifications: 'eventConnect.notifications'
@@ -16,13 +17,15 @@ const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.users,
     STORAGE_KEYS.events,
     STORAGE_KEYS.registrations,
+    STORAGE_KEYS.eventParticipants,
     STORAGE_KEYS.taskCompletions,
     STORAGE_KEYS.eventRewards,
     STORAGE_KEYS.notifications
 ];
 
 const SESSION_KEYS = {
-    pendingSignup: 'eventConnect.pendingSignup'
+    pendingSignup: 'eventConnect.pendingSignup',
+    pendingGuestXpSave: 'eventConnect.pendingGuestXpSave'
 };
 
 // Starter events shown the first time someone opens the site in this browser.
@@ -55,7 +58,7 @@ const seedEvents = [
         endDate: '2026-06-03',
         endTime: '16:30',
         location: 'Room B',
-        type: 'profesional',
+        type: 'professional',
         organizerEmail: '',
         tasks: [
             {
@@ -87,6 +90,32 @@ const seedEvents = [
 ];
 
 const loginView = document.querySelector('#loginView');
+const eventLandingView = document.querySelector('#eventLandingView');
+const eventLandingTitle = document.querySelector('#eventLandingTitle');
+const eventLandingDescription = document.querySelector('#eventLandingDescription');
+const eventLandingMeta = document.querySelector('#eventLandingMeta');
+const eventLandingMessage = document.querySelector('#eventLandingMessage');
+const joinEventButton = document.querySelector('#joinEventButton');
+const eventLoginButton = document.querySelector('#eventLoginButton');
+const guestJoinForm = document.querySelector('#guestJoinForm');
+const guestJoinMessage = document.querySelector('#guestJoinMessage');
+const eventGameView = document.querySelector('#eventGameView');
+const gameEventTitle = document.querySelector('#gameEventTitle');
+const gameUserLabel = document.querySelector('#gameUserLabel');
+const gameUserXp = document.querySelector('#gameUserXp');
+const gameUserLevel = document.querySelector('#gameUserLevel');
+const gameConnectionCount = document.querySelector('#gameConnectionCount');
+const gameConnectFlow = document.querySelector('#gameConnectFlow');
+const gameQrImage = document.querySelector('#gameQrImage');
+const gameQrLink = document.querySelector('#gameQrLink');
+const gameTaskList = document.querySelector('#gameTaskList');
+const gameConnectionList = document.querySelector('#gameConnectionList');
+const gameLeaderboard = document.querySelector('#gameLeaderboard');
+const eventGameLogoutButton = document.querySelector('#eventGameLogoutButton');
+const saveXpPrompt = document.querySelector('#saveXpPrompt');
+const saveXpText = document.querySelector('#saveXpText');
+const saveXpButton = document.querySelector('#saveXpButton');
+const saveXpLaterButton = document.querySelector('#saveXpLaterButton');
 const dashboardView = document.querySelector('#dashboardView');
 const loginForm = document.querySelector('#loginForm');
 const verificationForm = document.querySelector('#verificationForm');
@@ -231,6 +260,26 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+function normalizeEventType(type) {
+    return type === 'profesional' ? 'professional' : (type || 'leisure');
+}
+
+function getEventIdFromUrl() {
+    return new URLSearchParams(window.location.search).get('event') || '';
+}
+
+function getConnectTargetFromUrl() {
+    return new URLSearchParams(window.location.search).get('connect') || '';
+}
+
+function isEventMode() {
+    return Boolean(getEventIdFromUrl());
+}
+
+function getEventById(eventId) {
+    return getEvents().find((event) => event.id === eventId) || null;
+}
+
 function getInviteFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const eventId = params.get('event');
@@ -290,10 +339,23 @@ function makeInviteLink(eventId, email) {
     return url.toString();
 }
 
+function makeEventGameLink(eventId) {
+    const url = new URL('/web/', NETLIFY_SITE_URL);
+    url.searchParams.set('event', eventId);
+    return url.toString();
+}
+
 function makeQrConnectLink(user) {
     const url = new URL('/web/', NETLIFY_SITE_URL);
     url.searchParams.set('connect', user.email);
     url.searchParams.set('name', user.username);
+    return url.toString();
+}
+
+function makeParticipantQrLink(eventId, participantId) {
+    const url = new URL('/web/', NETLIFY_SITE_URL);
+    url.searchParams.set('event', eventId);
+    url.searchParams.set('connect', participantId);
     return url.toString();
 }
 
@@ -310,6 +372,13 @@ function parseInviteEmails(value) {
         .map(normalizeEmail)
         .filter(Boolean)
         .filter((email, index, emails) => emails.indexOf(email) === index);
+}
+
+function parseInterests(value) {
+    return String(value || '')
+        .split(',')
+        .map((interest) => interest.trim())
+        .filter(Boolean);
 }
 
 function getCurrentUser() {
@@ -332,6 +401,10 @@ function getEvents() {
 
 function getRegistrations() {
     return readStore(STORAGE_KEYS.registrations, {});
+}
+
+function getEventParticipants() {
+    return readStore(STORAGE_KEYS.eventParticipants, []).map(normalizeParticipant);
 }
 
 function getTaskCompletions() {
@@ -357,13 +430,21 @@ function normalizeUser(user) {
         exp: Number.isFinite(Number(user.exp)) ? Number(user.exp) : 0,
         connectedUsers: Array.isArray(user.connectedUsers)
             ? user.connectedUsers.map(normalizeEmail).filter(Boolean)
-            : []
+            : [],
+        role: user.role || '',
+        interests: Array.isArray(user.interests)
+            ? user.interests
+            : parseInterests(user.interests || ''),
+        goal: user.goal || '',
+        currentEventId: user.currentEventId || '',
+        isGuest: Boolean(user.isGuest)
     };
 }
 
 function normalizeEvent(event) {
     return {
         ...event,
+        type: normalizeEventType(event.type),
         inviteEmails: event.inviteEmails || [],
         organizerEmail: event.organizerEmail || '',
         managerEmails: (event.managerEmails || []).map(normalizeEmail),
@@ -477,6 +558,57 @@ function connectUsers(firstEmail, secondEmail) {
     return true;
 }
 
+function connectEventParticipants(eventId, currentParticipantId, targetParticipantId) {
+    if (!currentParticipantId || !targetParticipantId || currentParticipantId === targetParticipantId) {
+        return { status: 'self' };
+    }
+
+    const participants = getEventParticipants();
+    const currentIndex = participants.findIndex((participant) => (
+        participant.eventId === eventId && participant.id === currentParticipantId
+    ));
+    const targetIndex = participants.findIndex((participant) => (
+        participant.eventId === eventId && participant.id === targetParticipantId
+    ));
+
+    if (currentIndex < 0 || targetIndex < 0) {
+        return { status: 'missing' };
+    }
+
+    const currentParticipant = participants[currentIndex];
+    const targetParticipant = participants[targetIndex];
+
+    if (currentParticipant.userEmail === targetParticipant.userEmail) {
+        return { status: 'self' };
+    }
+
+    const alreadyConnected = currentParticipant.connectedParticipantIds.includes(targetParticipant.id);
+    if (alreadyConnected) {
+        return { status: 'duplicate', target: targetParticipant };
+    }
+
+    participants[currentIndex] = {
+        ...currentParticipant,
+        eventXp: currentParticipant.eventXp + 10,
+        connectedParticipantIds: Array.from(new Set([
+            ...currentParticipant.connectedParticipantIds,
+            targetParticipant.id
+        ]))
+    };
+    participants[targetIndex] = {
+        ...targetParticipant,
+        eventXp: targetParticipant.eventXp + 10,
+        connectedParticipantIds: Array.from(new Set([
+            ...targetParticipant.connectedParticipantIds,
+            currentParticipant.id
+        ]))
+    };
+
+    saveEventParticipants(participants);
+    connectUsers(currentParticipant.userEmail, targetParticipant.userEmail);
+    return { status: 'connected', target: targetParticipant };
+}
+
 function saveEvents(events) {
     writeStore(STORAGE_KEYS.events, events.map(normalizeEvent));
 }
@@ -521,13 +653,21 @@ function getEventRewardTime(event) {
     return new Date(makeLocalDateTime(event.endDate, event.endTime).getTime() + EVENT_REWARD_DELAY_MS);
 }
 
-function getEventScore(event, userEmail) {
+function getApprovedTaskScore(event, userEmail) {
     const completions = getTaskCompletions();
 
     return event.tasks.reduce((total, task) => {
         const approvedUsers = completions[event.id]?.[task.id]?.approved || [];
         return approvedUsers.includes(userEmail) ? total + task.exp : total;
     }, 0);
+}
+
+function getEventScore(event, userEmail) {
+    const participant = getEventParticipants().find((item) => (
+        item.eventId === event.id && item.userEmail === userEmail
+    ));
+
+    return getApprovedTaskScore(event, userEmail) + (participant?.eventXp || 0);
 }
 
 function getDailyAccountXpAwarded(rewards, userEmail, day) {
@@ -562,7 +702,7 @@ function processEventRewards() {
 
         const registeredEmails = registrations[event.id] || [];
         registeredEmails.forEach((email) => {
-            const eventXp = getEventScore(event, email);
+            const eventXp = getApprovedTaskScore(event, email);
             if (eventXp <= 0) {
                 return;
             }
@@ -632,6 +772,131 @@ async function startEmailVerification(user) {
         demoCodeBox.textContent = `Email is not configured yet. Temporary local code for ${user.email}: ${code}`;
         verificationMessage.textContent = error.message;
     }
+}
+
+function saveEventParticipants(participants) {
+    writeStore(STORAGE_KEYS.eventParticipants, participants.map(normalizeParticipant));
+}
+
+function createParticipantId() {
+    if (window.crypto?.randomUUID) {
+        return `participant-${window.crypto.randomUUID()}`;
+    }
+
+    return `participant-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createGuestInternalId() {
+    return `guest-${createParticipantId().replace('participant-', '')}@guest.local`;
+}
+
+function getCurrentEventParticipant(eventId) {
+    const user = getCurrentUser();
+    if (!user) {
+        return null;
+    }
+
+    return getEventParticipants().find((participant) => (
+        participant.eventId === eventId && participant.userEmail === user.email
+    )) || null;
+}
+
+function getParticipantById(eventId, participantId) {
+    return getEventParticipants().find((participant) => (
+        participant.eventId === eventId && participant.id === participantId
+    )) || null;
+}
+
+function ensureEventRegistration(eventId, userEmail) {
+    const registrations = getRegistrations();
+    const eventUsers = registrations[eventId] || [];
+
+    if (!eventUsers.includes(userEmail)) {
+        registrations[eventId] = [...eventUsers, userEmail];
+        writeStore(STORAGE_KEYS.registrations, registrations);
+    }
+}
+
+function joinEventWithCurrentUser(eventId) {
+    const user = getCurrentUser();
+    if (!user) {
+        return null;
+    }
+
+    ensureEventRegistration(eventId, user.email);
+
+    const participants = getEventParticipants();
+    const existingParticipant = participants.find((participant) => (
+        participant.eventId === eventId && participant.userEmail === user.email
+    ));
+
+    if (existingParticipant) {
+        return existingParticipant;
+    }
+
+    const participant = normalizeParticipant({
+        id: createParticipantId(),
+        eventId,
+        userEmail: user.email,
+        displayName: user.username,
+        role: user.role,
+        interests: user.interests,
+        goal: user.goal,
+        eventXp: 0,
+        isGuest: user.isGuest,
+        createdAt: new Date().toISOString()
+    });
+
+    participants.push(participant);
+    saveEventParticipants(participants);
+    return participant;
+}
+
+function createGuestUser(profile, eventId) {
+    const guestEmail = createGuestInternalId();
+    const guestUser = normalizeUser({
+        username: profile.displayName,
+        email: guestEmail,
+        exp: 0,
+        connectedUsers: [],
+        role: profile.role,
+        interests: profile.interests,
+        goal: profile.goal,
+        currentEventId: eventId,
+        isGuest: true
+    });
+
+    saveUser(guestUser);
+    return guestUser;
+}
+
+function joinEventAsGuest(eventId, guestProfile) {
+    const profile = {
+        ...guestProfile,
+        interests: Array.isArray(guestProfile.interests)
+            ? guestProfile.interests
+            : parseInterests(guestProfile.interests)
+    };
+    const guestUser = createGuestUser(profile, eventId);
+    ensureEventRegistration(eventId, guestUser.email);
+
+    const participant = normalizeParticipant({
+        id: createParticipantId(),
+        eventId,
+        userEmail: guestUser.email,
+        displayName: profile.displayName,
+        role: profile.role,
+        interests: profile.interests,
+        goal: profile.goal,
+        eventXp: 0,
+        isGuest: true,
+        createdAt: new Date().toISOString()
+    });
+
+    const participants = getEventParticipants();
+    participants.push(participant);
+    saveEventParticipants(participants);
+    return participant;
 }
 
 function cancelEmailVerification() {
@@ -949,6 +1214,7 @@ function renderTaskAction(eventId, task, status, registered) {
 }
 
 function renderInviteLinks(event) {
+    const publicLink = makeEventGameLink(event.id);
     const inviteLinks = event.inviteEmails.map((email) => {
         const link = makeInviteLink(event.id, email);
         return `
@@ -959,7 +1225,16 @@ function renderInviteLinks(event) {
         `;
     }).join('');
 
-    return inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : '<p>No invite emails added.</p>';
+    return `
+        <ul class="invite-list">
+            <li>
+                <strong>Public event game link</strong>
+                <a href="${escapeHtml(publicLink)}">${escapeHtml(publicLink)}</a>
+            </li>
+            ${inviteLinks}
+        </ul>
+        ${inviteLinks ? '' : '<p>No invite emails added.</p>'}
+    `;
 }
 
 async function sendEventInvites(event) {
@@ -978,6 +1253,26 @@ async function sendEventInvites(event) {
     return {
         sent: results.filter((result) => result.status === 'fulfilled').length,
         failed: results.filter((result) => result.status === 'rejected').length
+    };
+}
+
+function normalizeParticipant(participant) {
+    return {
+        id: participant.id || createParticipantId(),
+        eventId: participant.eventId || '',
+        userEmail: participant.userEmail ? normalizeEmail(participant.userEmail) : '',
+        displayName: participant.displayName || participant.username || 'Guest',
+        role: participant.role || '',
+        interests: Array.isArray(participant.interests)
+            ? participant.interests
+            : parseInterests(participant.interests || ''),
+        goal: participant.goal || '',
+        eventXp: Number.isFinite(Number(participant.eventXp)) ? Number(participant.eventXp) : 0,
+        isGuest: Boolean(participant.isGuest),
+        connectedParticipantIds: Array.isArray(participant.connectedParticipantIds)
+            ? participant.connectedParticipantIds.filter(Boolean)
+            : [],
+        createdAt: participant.createdAt || new Date().toISOString()
     };
 }
 
@@ -1025,10 +1320,12 @@ function renderPendingApprovals(event) {
 function renderLeaderboard(event) {
     const registrations = getRegistrations();
     const registeredEmails = registrations[event.id] || [];
+    const participants = getEventParticipants().filter((participant) => participant.eventId === event.id);
     const users = getUsers()
         .filter((user) => registeredEmails.includes(user.email))
         .map((user) => ({
             ...user,
+            participant: participants.find((participant) => participant.userEmail === user.email),
             eventXp: getEventScore(event, user.email)
         }))
         .sort((first, second) => second.eventXp - first.eventXp || first.username.localeCompare(second.username));
@@ -1036,8 +1333,8 @@ function renderLeaderboard(event) {
     const leaderboardItems = users.map((user, index) => `
         <li>
             <span class="leaderboard-rank">${index + 1}</span>
-            <strong>${escapeHtml(user.username)}</strong>
-            <span>${escapeHtml(user.email)}</span>
+            <strong>${escapeHtml(user.participant?.displayName || user.username)}</strong>
+            <span>${escapeHtml(user.isGuest ? 'Guest player' : user.email)}</span>
             <span>Level ${escapeHtml(getLevel(user.exp))}</span>
             <span class="task-exp">${escapeHtml(user.eventXp)} event XP</span>
         </li>
@@ -1046,6 +1343,225 @@ function renderLeaderboard(event) {
     return leaderboardItems
         ? `<ol class="leaderboard-list">${leaderboardItems}</ol>`
         : '<p>No attendees registered yet.</p>';
+}
+
+function isEventFinished(event) {
+    return new Date() > makeLocalDateTime(event.endDate, event.endTime);
+}
+
+function showEventLanding(event) {
+    if (!eventLandingView) {
+        return;
+    }
+
+    loginView?.classList.add('hidden');
+    dashboardView?.classList.add('hidden');
+    eventGameView?.classList.add('hidden');
+    eventLandingView.classList.remove('hidden');
+    guestJoinForm?.classList.add('hidden');
+
+    const locationText = event.location ? event.location : 'Location to be announced';
+    const connectTarget = getConnectTargetFromUrl();
+    eventLandingTitle.textContent = event.name;
+    eventLandingDescription.textContent = event.description || '';
+    eventLandingMeta.innerHTML = `
+        <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
+        <span class="pill">${escapeHtml(formatEventDateTime(event))}</span>
+        <span class="pill">${escapeHtml(locationText)}</span>
+    `;
+    eventLandingMessage.textContent = connectTarget
+        ? 'Join this event first, then you can connect with the person from the QR code.'
+        : '';
+}
+
+function renderEventConnectFlow(event, participant) {
+    if (!gameConnectFlow) {
+        return;
+    }
+
+    const targetId = getConnectTargetFromUrl();
+    if (!targetId) {
+        gameConnectFlow.classList.add('hidden');
+        gameConnectFlow.innerHTML = '';
+        return;
+    }
+
+    const targetParticipant = getParticipantById(event.id, targetId);
+    if (!targetParticipant) {
+        gameConnectFlow.classList.remove('hidden');
+        gameConnectFlow.innerHTML = '<p class="form-message">This connection QR is not valid for this event.</p>';
+        return;
+    }
+
+    const isSelf = targetParticipant.id === participant.id || targetParticipant.userEmail === participant.userEmail;
+    const alreadyConnected = participant.connectedParticipantIds.includes(targetParticipant.id);
+    gameConnectFlow.classList.remove('hidden');
+    gameConnectFlow.innerHTML = `
+        <p class="eyebrow">QR scanned</p>
+        <h3>${isSelf ? 'This is your own QR' : `Connect with ${escapeHtml(targetParticipant.displayName)}`}</h3>
+        <p class="helper-text">${escapeHtml(targetParticipant.role || 'Event participant')}</p>
+        ${isSelf
+            ? '<p class="helper-text">Share your QR with someone else to make a new connection.</p>'
+            : `<button type="button" data-event-connect="${escapeHtml(targetParticipant.id)}" ${alreadyConnected ? 'disabled' : ''}>${alreadyConnected ? 'Connected' : 'Connect and earn XP'}</button>`
+        }
+    `;
+}
+
+function renderEventConnections(participant) {
+    if (!gameConnectionList) {
+        return;
+    }
+
+    const participants = getEventParticipants();
+    const connections = participant.connectedParticipantIds
+        .map((id) => participants.find((item) => item.id === id))
+        .filter(Boolean)
+        .sort((first, second) => first.displayName.localeCompare(second.displayName));
+
+    gameConnectionList.innerHTML = connections.length
+        ? connections.map((connectedParticipant) => `
+            <li>
+                <strong>${escapeHtml(connectedParticipant.displayName)}</strong>
+                <span>${escapeHtml(connectedParticipant.role || 'Event participant')}</span>
+                <span>${escapeHtml(connectedParticipant.interests.join(', ') || 'No interests listed')}</span>
+            </li>
+        `).join('')
+        : '<li class="empty-state">No event connections yet.</li>';
+}
+
+function renderEventGameTasks(event, participant) {
+    if (!gameTaskList) {
+        return;
+    }
+
+    const user = getCurrentUser();
+    gameTaskList.innerHTML = renderTaskList(event, user);
+
+    if (!participant || !isRegistered(event.id)) {
+        gameTaskList.insertAdjacentHTML('beforeend', '<p class="helper-text">Join the event to submit tasks.</p>');
+    }
+}
+
+function renderSaveXpPrompt(event, participant) {
+    if (!saveXpPrompt || !saveXpText) {
+        return;
+    }
+
+    const hiddenByChoice = readSession(`${SESSION_KEYS.pendingGuestXpSave}:later:${participant.id}`, false);
+    const eventScore = getEventScore(event, participant.userEmail);
+    if (!participant.isGuest || eventScore <= 0 || !isEventFinished(event) || hiddenByChoice) {
+        saveXpPrompt.classList.add('hidden');
+        return;
+    }
+
+    saveXpPrompt.classList.remove('hidden');
+    saveXpText.textContent = `You earned ${eventScore} XP at this event. Create your Event Passport to carry this XP to your next event.`;
+}
+
+function renderEventGameDashboard(event, participant) {
+    if (!eventGameView) {
+        return;
+    }
+
+    processEventRewards();
+
+    loginView?.classList.add('hidden');
+    dashboardView?.classList.add('hidden');
+    eventLandingView?.classList.add('hidden');
+    eventGameView.classList.remove('hidden');
+
+    const user = getCurrentUser();
+    const freshParticipant = getCurrentEventParticipant(event.id) || participant;
+    const qrLink = makeParticipantQrLink(event.id, freshParticipant.id);
+
+    gameEventTitle.textContent = event.name;
+    gameUserLabel.textContent = `${freshParticipant.displayName} ${freshParticipant.role ? `- ${freshParticipant.role}` : ''}`;
+    gameUserXp.textContent = String(getEventScore(event, freshParticipant.userEmail));
+    gameUserLevel.textContent = String(getLevel(getEventScore(event, freshParticipant.userEmail)));
+    gameConnectionCount.textContent = String(freshParticipant.connectedParticipantIds.length);
+
+    if (gameQrImage && gameQrLink) {
+        gameQrImage.src = makeQrImageUrl(qrLink);
+        gameQrLink.href = qrLink;
+        gameQrLink.textContent = qrLink;
+    }
+
+    if (user?.isGuest && user.email !== freshParticipant.userEmail) {
+        writeStore(STORAGE_KEYS.currentUser, findUserByEmail(freshParticipant.userEmail) || user);
+    }
+
+    renderEventConnectFlow(event, freshParticipant);
+    renderEventGameTasks(event, freshParticipant);
+    renderEventConnections(freshParticipant);
+    if (gameLeaderboard) {
+        gameLeaderboard.innerHTML = renderLeaderboard(event);
+    }
+    renderSaveXpPrompt(event, freshParticipant);
+}
+
+function saveGuestProgressToAccount(realEmail) {
+    const pending = readSession(SESSION_KEYS.pendingGuestXpSave, null);
+    if (!pending?.guestEmail || !pending?.eventId) {
+        return;
+    }
+
+    const realUser = findUserByEmail(realEmail);
+    const guestUser = findUserByEmail(pending.guestEmail);
+    if (!realUser || !guestUser) {
+        return;
+    }
+
+    const event = getEventById(pending.eventId);
+    const guestEventScore = event ? getEventScore(event, pending.guestEmail) : guestUser.exp;
+    const participants = getEventParticipants().map((participant) => (
+        participant.userEmail === pending.guestEmail
+            ? { ...participant, userEmail: realEmail, isGuest: false, displayName: realUser.username }
+            : participant
+    ));
+    saveEventParticipants(participants);
+
+    const registrations = getRegistrations();
+    Object.keys(registrations).forEach((eventId) => {
+        registrations[eventId] = Array.from(new Set(registrations[eventId].map((email) => (
+            email === pending.guestEmail ? realEmail : email
+        ))));
+    });
+    writeStore(STORAGE_KEYS.registrations, registrations);
+
+    const completions = getTaskCompletions();
+    Object.values(completions).forEach((eventCompletions) => {
+        Object.values(eventCompletions).forEach((taskCompletion) => {
+            taskCompletion.pending = Array.from(new Set((taskCompletion.pending || []).map((email) => (
+                email === pending.guestEmail ? realEmail : email
+            ))));
+            taskCompletion.approved = Array.from(new Set((taskCompletion.approved || []).map((email) => (
+                email === pending.guestEmail ? realEmail : email
+            ))));
+        });
+    });
+    writeStore(STORAGE_KEYS.taskCompletions, completions);
+
+    const users = getUsers()
+        .filter((user) => user.email !== pending.guestEmail)
+        .map((user) => {
+            const connectedUsers = Array.from(new Set(user.connectedUsers.map((email) => (
+                email === pending.guestEmail ? realEmail : email
+            )))).filter((email) => email !== user.email);
+
+            if (user.email === realEmail) {
+                return {
+                    ...user,
+                    exp: Math.max(user.exp, guestUser.exp, guestEventScore),
+                    connectedUsers,
+                    isGuest: false
+                };
+            }
+
+            return { ...user, connectedUsers };
+        });
+
+    saveUsers(users);
+    sessionStorage.removeItem(SESSION_KEYS.pendingGuestXpSave);
 }
 
 function openEventDialog(eventId) {
@@ -1166,6 +1682,15 @@ function requestTaskCompletion(eventId, taskId) {
     };
 
     writeStore(STORAGE_KEYS.taskCompletions, completions);
+    if (isEventMode()) {
+        const event = getEventById(eventId);
+        const participant = getCurrentEventParticipant(eventId);
+        if (event && participant) {
+            renderEventGameDashboard(event, participant);
+        }
+        return;
+    }
+
     openEventDialog(eventId);
 }
 
@@ -1203,6 +1728,54 @@ function approveTaskCompletion(eventId, taskId, userEmail) {
 function showView() {
     const user = getCurrentUser();
     const pendingSignup = readSession(SESSION_KEYS.pendingSignup, null);
+    const eventId = getEventIdFromUrl();
+
+    if (eventId) {
+        const event = getEventById(eventId);
+        dashboardView?.classList.add('hidden');
+
+        if (!event) {
+            loginView?.classList.add('hidden');
+            eventGameView?.classList.add('hidden');
+            eventLandingView?.classList.remove('hidden');
+            if (eventLandingTitle) {
+                eventLandingTitle.textContent = 'Event not found';
+            }
+            if (eventLandingDescription) {
+                eventLandingDescription.textContent = 'This event game link does not match a saved event.';
+            }
+            if (eventLandingMeta) {
+                eventLandingMeta.innerHTML = '';
+            }
+            if (eventLandingMessage) {
+                eventLandingMessage.textContent = 'Ask the organizer for a fresh event game link.';
+            }
+            return;
+        }
+
+        if (pendingSignup) {
+            eventLandingView?.classList.add('hidden');
+            eventGameView?.classList.add('hidden');
+            loginView?.classList.remove('hidden');
+            loginForm.classList.add('hidden');
+            verificationForm.classList.remove('hidden');
+            demoCodeBox.textContent = `Local demo email code for ${pendingSignup.email}: ${pendingSignup.code}`;
+            return;
+        }
+
+        const participant = user ? joinEventWithCurrentUser(eventId) : null;
+        if (participant) {
+            saveGuestProgressToAccount(user.email);
+            renderEventGameDashboard(event, getCurrentEventParticipant(eventId) || participant);
+            return;
+        }
+
+        showEventLanding(event);
+        return;
+    }
+
+    eventLandingView?.classList.add('hidden');
+    eventGameView?.classList.add('hidden');
 
     // A saved current user means the browser stays logged in after refresh.
     loginView.classList.toggle('hidden', Boolean(user));
@@ -1222,6 +1795,54 @@ function showView() {
     if (user) {
         renderDashboard();
     }
+}
+
+if (joinEventButton) {
+    joinEventButton.addEventListener('click', () => {
+        guestJoinForm?.classList.remove('hidden');
+        guestJoinMessage.textContent = '';
+        document.querySelector('#guestDisplayNameInput')?.focus();
+    });
+}
+
+if (eventLoginButton) {
+    eventLoginButton.addEventListener('click', () => {
+        eventLandingView?.classList.add('hidden');
+        eventGameView?.classList.add('hidden');
+        loginView?.classList.remove('hidden');
+        loginForm.classList.remove('hidden');
+        verificationForm.classList.add('hidden');
+        loginMessage.textContent = 'Log in, then you will join this event game automatically.';
+        document.querySelector('#usernameInput')?.focus();
+    });
+}
+
+if (guestJoinForm) {
+    guestJoinForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const eventId = getEventIdFromUrl();
+        const targetEvent = getEventById(eventId);
+        const displayName = document.querySelector('#guestDisplayNameInput').value.trim();
+        const role = document.querySelector('#guestRoleInput').value.trim();
+        const interests = document.querySelector('#guestInterestsInput').value;
+        const goal = document.querySelector('#guestGoalInput').value.trim();
+
+        if (!targetEvent || !displayName || !role) {
+            guestJoinMessage.textContent = 'Add a display name and role to join.';
+            return;
+        }
+
+        const participant = joinEventAsGuest(eventId, {
+            displayName,
+            role,
+            interests,
+            goal
+        });
+
+        guestJoinForm.reset();
+        renderEventGameDashboard(targetEvent, participant);
+    });
 }
 
 loginForm.addEventListener('submit', async (event) => {
@@ -1436,6 +2057,35 @@ if (connectFlow) {
     });
 }
 
+if (eventGameView) {
+    eventGameView.addEventListener('click', (event) => {
+        const connectButton = event.target.closest('[data-event-connect]');
+        if (connectButton) {
+            const eventId = getEventIdFromUrl();
+            const targetEvent = getEventById(eventId);
+            const participant = getCurrentEventParticipant(eventId);
+
+            if (!targetEvent || !participant) {
+                return;
+            }
+
+            connectEventParticipants(eventId, participant.id, connectButton.dataset.eventConnect);
+            renderEventGameDashboard(targetEvent, getCurrentEventParticipant(eventId) || participant);
+            return;
+        }
+
+        const completeButton = event.target.closest('[data-complete-task]');
+        if (completeButton) {
+            requestTaskCompletion(completeButton.dataset.completeTask, completeButton.dataset.taskId);
+            const targetEvent = getEventById(getEventIdFromUrl());
+            const participant = getCurrentEventParticipant(getEventIdFromUrl());
+            if (targetEvent && participant) {
+                renderEventGameDashboard(targetEvent, participant);
+            }
+        }
+    });
+}
+
 if (copyQrLinkButton) {
     copyQrLinkButton.addEventListener('click', copyConnectionLink);
 }
@@ -1444,6 +2094,45 @@ if (connectionUrlForm) {
     connectionUrlForm.addEventListener('submit', (event) => {
         event.preventDefault();
         openPastedConnectionUrl(connectionUrlInput.value);
+    });
+}
+
+if (saveXpButton) {
+    saveXpButton.addEventListener('click', () => {
+        const eventId = getEventIdFromUrl();
+        const participant = getCurrentEventParticipant(eventId);
+        if (!participant) {
+            return;
+        }
+
+        writeSession(SESSION_KEYS.pendingGuestXpSave, {
+            eventId,
+            guestEmail: participant.userEmail
+        });
+        localStorage.removeItem(STORAGE_KEYS.currentUser);
+        eventGameView?.classList.add('hidden');
+        loginView?.classList.remove('hidden');
+        loginForm.classList.remove('hidden');
+        verificationForm.classList.add('hidden');
+        loginMessage.textContent = 'Log in or sign up to save your guest XP into your Event Passport.';
+        document.querySelector('#usernameInput')?.focus();
+    });
+}
+
+if (saveXpLaterButton) {
+    saveXpLaterButton.addEventListener('click', () => {
+        const participant = getCurrentEventParticipant(getEventIdFromUrl());
+        if (participant) {
+            writeSession(`${SESSION_KEYS.pendingGuestXpSave}:later:${participant.id}`, true);
+        }
+        saveXpPrompt?.classList.add('hidden');
+    });
+}
+
+if (eventGameLogoutButton) {
+    eventGameLogoutButton.addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_KEYS.currentUser);
+        showView();
     });
 }
 

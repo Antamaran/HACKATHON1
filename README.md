@@ -19,10 +19,29 @@ Later, we can think of other games to make the event even more fun!
 
 ## Local website
 
-The `web` folder contains a website for logging in with a username and email,
-creating events, and registering for events. First-time signups use email
-verification before the account is created. The current frontend stores app data
-in the browser using `localStorage`.
+The `web` folder contains a website for creating event game links and running a
+guest-friendly XP game for one specific event. First-time account signups use
+email verification before the account is created. The current frontend stores
+app data in the browser using `localStorage`, with Netlify sync when deployed.
+
+Organizers can still log in without an event link to create events, add tasks,
+invite emails, add managers, and approve task completions. Each event has a
+public game link in its event info panel, such as:
+
+```text
+https://starlit-haupia-07c2f5.netlify.app/web/?event=coffee-match
+```
+
+Attendees opening an event link see only that event's landing page. They can
+join as a guest with a nickname, role, interests, and optional goal, then get a
+personal event QR link such as:
+
+```text
+https://starlit-haupia-07c2f5.netlify.app/web/?event=coffee-match&connect=PARTICIPANT_ID
+```
+
+Scanning another attendee's QR joins the same event first, then allows a
+connection. Duplicate/self connections do not award repeat XP.
 
 When creating an event, you can add invitee email addresses. The organizer can
 open the event details to see local invite links that open the site directly to
@@ -57,10 +76,16 @@ cd web
 python -m http.server 8000
 ```
 
-Then open:
+Then open the organizer/admin app:
 
 ```text
 http://localhost:8000
+```
+
+Or open a specific event game:
+
+```text
+http://localhost:8000/?event=coffee-match
 ```
 
 ## Deploy on Netlify
@@ -156,13 +181,14 @@ Use it:
 The app also stores events in `events.db`.
 Each event has an id, name, description, start date, end date, optional location, and type.
 Dates use `YYYY-MM-DD` format.
-The accepted event types are `profesional` and `leisure`.
+The accepted event types are `professional` and `leisure`. Older stored
+`profesional` values are normalized by the website for compatibility.
 
 Use it:
 
 ```bash
 ./event_app event-add event-001 "Coffee Match" "Meet someone new over coffee" 2026-06-01 2026-06-01 "Main hall" leisure
-./event_app event-add event-002 "Product Workshop" "Build a quick demo together" 2026-06-02 2026-06-03 profesional
+./event_app event-add event-002 "Product Workshop" "Build a quick demo together" 2026-06-02 2026-06-03 professional
 ./event_app event-show event-001
 ./event_app event-list
 ./event_app event-count

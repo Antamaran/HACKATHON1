@@ -54,6 +54,132 @@
             </form>
         </section>
 
+        <section class="event-landing-view hidden" id="eventLandingView">
+            <div class="event-landing-copy">
+                <p class="eyebrow">Event game</p>
+                <h1 id="eventLandingTitle">Join the event game</h1>
+                <p class="intro" id="eventLandingDescription"></p>
+                <div class="event-meta landing-meta" id="eventLandingMeta"></div>
+                <p class="helper-text">Complete quests, meet people, earn XP.</p>
+                <p class="form-message" id="eventLandingMessage"></p>
+                <div class="button-row landing-actions">
+                    <button type="button" id="joinEventButton">JOIN EVENT</button>
+                    <button class="secondary-button" type="button" id="eventLoginButton">Already have an account? Log in</button>
+                </div>
+            </div>
+
+            <form class="login-panel hidden" id="guestJoinForm">
+                <div>
+                    <p class="eyebrow">Quick join</p>
+                    <h2>No email needed</h2>
+                    <p class="helper-text">This creates a guest profile just for this event.</p>
+                </div>
+
+                <label>
+                    Nickname/display name
+                    <input type="text" id="guestDisplayNameInput" autocomplete="nickname" required>
+                </label>
+
+                <label>
+                    Role
+                    <input type="text" id="guestRoleInput" placeholder="Designer, student, founder..." required>
+                </label>
+
+                <label>
+                    Interests
+                    <input type="text" id="guestInterestsInput" placeholder="AI, startups, coffee chats">
+                </label>
+
+                <label>
+                    Goal for this event
+                    <input type="text" id="guestGoalInput" placeholder="Optional">
+                </label>
+
+                <button type="submit">Start playing</button>
+                <p class="form-message" id="guestJoinMessage"></p>
+            </form>
+        </section>
+
+        <section class="event-game-view hidden" id="eventGameView">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">Event game</p>
+                    <h1 id="gameEventTitle">Event</h1>
+                    <p class="helper-text" id="gameUserLabel"></p>
+                </div>
+                <button class="secondary-button" type="button" id="eventGameLogoutButton">Leave screen</button>
+            </header>
+
+            <section class="summary-strip game-summary" aria-label="Event game summary">
+                <div>
+                    <span id="gameUserXp">0</span>
+                    <p>Event XP</p>
+                </div>
+                <div>
+                    <span id="gameUserLevel">1</span>
+                    <p>Level</p>
+                </div>
+                <div>
+                    <span id="gameConnectionCount">0</span>
+                    <p>Connections</p>
+                </div>
+            </section>
+
+            <div class="game-grid">
+                <section class="game-panel">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="eyebrow">Share</p>
+                            <h2>Your event QR</h2>
+                        </div>
+                    </div>
+                    <div class="connect-flow hidden" id="gameConnectFlow"></div>
+                    <div class="qr-card">
+                        <img id="gameQrImage" alt="Your event connection QR code">
+                        <a id="gameQrLink" href="#">Open event connection link</a>
+                    </div>
+                </section>
+
+                <section class="game-panel">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="eyebrow">Quests</p>
+                            <h2>Tasks and missions</h2>
+                        </div>
+                    </div>
+                    <div id="gameTaskList"></div>
+                </section>
+
+                <section class="game-panel">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="eyebrow">People</p>
+                            <h2>Connections</h2>
+                        </div>
+                    </div>
+                    <ul class="connection-list" id="gameConnectionList"></ul>
+                </section>
+
+                <section class="game-panel">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="eyebrow">Rankings</p>
+                            <h2>Leaderboard</h2>
+                        </div>
+                    </div>
+                    <div id="gameLeaderboard"></div>
+                </section>
+            </div>
+
+            <section class="save-xp-prompt hidden" id="saveXpPrompt">
+                <p id="saveXpText"></p>
+                <div class="button-row">
+                    <button type="button" id="saveXpButton">Save my XP</button>
+                    <button class="secondary-button" type="button" id="saveXpLaterButton">Maybe later</button>
+                </div>
+            </section>
+        </section>
+
         <section class="dashboard-view hidden" id="dashboardView">
             <header class="topbar">
                 <div>
@@ -95,7 +221,7 @@
                         </div>
                         <div class="filter-group" role="group" aria-label="Filter events">
                             <button class="filter-button active" type="button" data-filter="all">All</button>
-                            <button class="filter-button" type="button" data-filter="profesional">Profesional</button>
+                            <button class="filter-button" type="button" data-filter="professional">Professional</button>
                             <button class="filter-button" type="button" data-filter="leisure">Leisure</button>
                         </div>
                     </div>
@@ -187,7 +313,7 @@
                         <label>
                             Type
                             <select id="eventTypeInput" required>
-                                <option value="profesional">Profesional</option>
+                                <option value="professional">Professional</option>
                                 <option value="leisure">Leisure</option>
                             </select>
                         </label>

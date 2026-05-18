@@ -413,9 +413,69 @@ form {
     font-weight: 800;
 }
 
-.pill.profesional {
+.pill.profesional,
+.pill.professional {
     color: #ffffff;
     background: var(--professional);
+}
+
+.event-landing-view {
+    min-height: calc(100vh - 56px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    align-items: center;
+    gap: 36px;
+}
+
+.event-landing-copy {
+    display: grid;
+    gap: 16px;
+    max-width: 720px;
+}
+
+.landing-meta {
+    margin: 4px 0;
+}
+
+.landing-actions {
+    max-width: 560px;
+}
+
+.event-game-view {
+    display: grid;
+    gap: 22px;
+}
+
+.game-summary {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.game-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.game-panel,
+.save-xp-prompt {
+    display: grid;
+    gap: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px;
+    background: #ffffff;
+}
+
+.save-xp-prompt {
+    border-color: var(--accent);
+    background: #ecfdf8;
+}
+
+.save-xp-prompt p {
+    margin: 0;
+    color: var(--accent-strong);
+    font-weight: 700;
 }
 
 .pill.leisure {
@@ -611,11 +671,13 @@ form {
 
 @media (max-width: 900px) {
     .login-view,
+    .event-landing-view,
     .workspace {
         grid-template-columns: 1fr;
     }
 
-    .event-grid {
+    .event-grid,
+    .game-grid {
         grid-template-columns: 1fr;
     }
 

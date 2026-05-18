@@ -24,9 +24,10 @@ creating events, and registering for events. First-time signups use a local demo
 email verification code before the account is created. The website stores data in
 your browser using `localStorage`.
 
-When creating an event, you can add invitee email addresses. The event card will
-show local invite links that open the site directly to that event so invitees can
-log in and register.
+When creating an event, you can add invitee email addresses. The organizer can
+open the event details to see local invite links that open the site directly to
+that event so invitees can log in and register. Invite emails are hidden from
+non-organizers.
 
 Users have an XP value, starting at `0 XP`. Event organizers can add tasks to
 their events, and each task has a name, description, and XP value.

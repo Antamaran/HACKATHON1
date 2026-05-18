@@ -426,6 +426,10 @@ form {
     flex: 1;
 }
 
+.event-actions .secondary-button {
+    flex: 0.75;
+}
+
 .event-actions button.registered {
     color: var(--accent);
     border: 1px solid var(--accent);
@@ -501,6 +505,53 @@ form {
 .event-card.invited-event {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.event-dialog {
+    width: min(720px, calc(100% - 24px));
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0;
+    color: var(--ink);
+    background: #ffffff;
+    box-shadow: 0 24px 70px rgba(31, 41, 51, 0.28);
+}
+
+.event-dialog::backdrop {
+    background: rgba(31, 41, 51, 0.42);
+}
+
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--line);
+    padding: 20px;
+}
+
+.dialog-header h2 {
+    margin: 0;
+}
+
+.close-button {
+    align-self: start;
+    min-width: 92px;
+}
+
+.dialog-body {
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+}
+
+.dialog-section {
+    display: grid;
+    gap: 8px;
+}
+
+.dialog-section h3 {
+    margin: 0;
+    font-size: 1rem;
 }
 
 .two-column {

@@ -90,6 +90,12 @@ const userQrImage = document.querySelector('#userQrImage');
 const userQrLink = document.querySelector('#userQrLink');
 const connectionList = document.querySelector('#connectionList');
 
+const eventDialog = document.querySelector('#eventDialog');
+const closeDialogButton = document.querySelector('#closeDialogButton');
+const dialogType = document.querySelector('#dialogType');
+const dialogTitle = document.querySelector('#dialogTitle');
+const dialogBody = document.querySelector('#dialogBody');
+
 let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
 let activeConnection = getConnectionFromUrl();
@@ -323,8 +329,18 @@ function connectUsers(firstEmail, secondEmail) {
         return false;
     }
 
+    const alreadyConnected = firstUser.connectedUsers.includes(secondEmail);
+
+    if (alreadyConnected) {
+        return false;
+    }
+
     firstUser.connectedUsers = Array.from(new Set([...firstUser.connectedUsers, secondEmail]));
     secondUser.connectedUsers = Array.from(new Set([...secondUser.connectedUsers, firstEmail]));
+
+    firstUser.exp += 10;
+    secondUser.exp += 10;
+
     saveUsers(users);
     return true;
 }
@@ -397,24 +413,7 @@ function toggleRegistration(eventId) {
 function renderEventCard(event) {
     const registered = isRegistered(event.id);
     const locationText = event.location ? event.location : 'No location yet';
-    const inviteEmails = event.inviteEmails || [];
-    const inviteLinks = inviteEmails.map((email) => {
-        const link = makeInviteLink(event.id, email);
-        return `
-            <li>
-                <strong>${escapeHtml(email)}</strong>
-                <a href="${escapeHtml(link)}">${escapeHtml(link)}</a>
-            </li>
-        `;
-    }).join('');
     const isInvitedEvent = activeInvite?.eventId === event.id;
-    const taskItems = event.tasks.map((task) => `
-        <li>
-            <strong>${escapeHtml(task.name)}</strong>
-            <span>${escapeHtml(task.description)}</span>
-            <span class="task-exp">${escapeHtml(task.exp)} XP</span>
-        </li>
-    `).join('');
 
     return `
         <article class="event-card ${isInvitedEvent ? 'invited-event' : ''}" id="event-${escapeHtml(event.id)}">
@@ -425,10 +424,9 @@ function renderEventCard(event) {
             <h3>${escapeHtml(event.name)}</h3>
             <p>${escapeHtml(event.description)}</p>
             <p>${escapeHtml(locationText)}</p>
-            ${event.organizerEmail ? `<p>Organizer: ${escapeHtml(event.organizerEmail)}</p>` : ''}
-            ${taskItems ? `<ul class="task-list">${taskItems}</ul>` : ''}
-            ${inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : ''}
+            ${event.tasks.length ? `<p>${event.tasks.length} task${event.tasks.length === 1 ? '' : 's'} available</p>` : ''}
             <div class="event-actions">
+                <button class="secondary-button" type="button" data-info="${escapeHtml(event.id)}">Info</button>
                 <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}">
                     ${registered ? 'Registered' : 'Register'}
                 </button>
@@ -499,16 +497,22 @@ function renderProfile(user) {
         return;
     }
 
-    const qrLink = makeQrConnectLink(user);
-    userQrImage.src = makeQrImageUrl(qrLink);
-    userQrLink.href = qrLink;
-    userQrLink.textContent = qrLink;
+    if (userQrImage && userQrLink) {
+        const qrLink = makeQrConnectLink(user);
+        userQrImage.src = makeQrImageUrl(qrLink);
+        userQrLink.href = qrLink;
+        userQrLink.textContent = qrLink;
+    }
 
     renderConnectFlow(user);
     renderConnections(user);
 }
 
 function renderConnectFlow(user) {
+    if (!connectFlow) {
+        return;
+    }
+
     if (!activeConnection) {
         connectFlow.classList.add('hidden');
         connectFlow.innerHTML = '';
@@ -547,6 +551,10 @@ function renderConnectFlow(user) {
 }
 
 function renderConnections(user) {
+    if (!connectionList) {
+        return;
+    }
+
     const users = getUsers();
     const connectedUsers = user.connectedUsers
         .map((email) => findUserInList(users, email) || { username: email, email })
@@ -560,6 +568,82 @@ function renderConnections(user) {
             </li>
         `).join('')
         : '<li class="empty-state">No connected users yet.</li>';
+}
+
+function isOrganizer(event, user) {
+    return Boolean(user && event.organizerEmail && event.organizerEmail === user.email);
+}
+
+function renderTaskList(tasks) {
+    const taskItems = tasks.map((task) => `
+        <li>
+            <strong>${escapeHtml(task.name)}</strong>
+            <span>${escapeHtml(task.description)}</span>
+            <span class="task-exp">${escapeHtml(task.exp)} XP</span>
+        </li>
+    `).join('');
+
+    return taskItems ? `<ul class="task-list">${taskItems}</ul>` : '<p>No tasks added yet.</p>';
+}
+
+function renderInviteLinks(event) {
+    const inviteLinks = event.inviteEmails.map((email) => {
+        const link = makeInviteLink(event.id, email);
+        return `
+            <li>
+                <strong>${escapeHtml(email)}</strong>
+                <a href="${escapeHtml(link)}">${escapeHtml(link)}</a>
+            </li>
+        `;
+    }).join('');
+
+    return inviteLinks ? `<ul class="invite-list">${inviteLinks}</ul>` : '<p>No invite emails added.</p>';
+}
+
+function openEventDialog(eventId) {
+    if (!eventDialog || !dialogType || !dialogTitle || !dialogBody) {
+        return;
+    }
+
+    const event = getEvents().find((item) => item.id === eventId);
+    const user = getCurrentUser();
+
+    if (!event) {
+        return;
+    }
+
+    const locationText = event.location ? event.location : 'No location yet';
+    const organizerText = event.organizerEmail ? event.organizerEmail : 'Starter event';
+    const inviteSection = isOrganizer(event, user)
+        ? `
+            <section class="dialog-section">
+                <h3>Invite links</h3>
+                ${renderInviteLinks(event)}
+            </section>
+        `
+        : '';
+
+    dialogType.textContent = event.type;
+    dialogTitle.textContent = event.name;
+    dialogBody.innerHTML = `
+        <section class="dialog-section">
+            <h3>Description</h3>
+            <p>${escapeHtml(event.description)}</p>
+        </section>
+        <section class="dialog-section">
+            <h3>Details</h3>
+            <p>${escapeHtml(event.startDate)} to ${escapeHtml(event.endDate)}</p>
+            <p>${escapeHtml(locationText)}</p>
+            <p>Organizer: ${escapeHtml(organizerText)}</p>
+        </section>
+        <section class="dialog-section">
+            <h3>Tasks</h3>
+            ${renderTaskList(event.tasks)}
+        </section>
+        ${inviteSection}
+    `;
+
+    eventDialog.showModal();
 }
 
 function showView() {
@@ -738,6 +822,12 @@ eventForm.addEventListener('submit', (event) => {
 
 eventGrid.addEventListener('click', (event) => {
     // Event cards are rendered dynamically, so one grid listener handles all buttons.
+    const infoButton = event.target.closest('[data-info]');
+    if (infoButton) {
+        openEventDialog(infoButton.dataset.info);
+        return;
+    }
+
     const button = event.target.closest('[data-register]');
     if (!button) {
         return;
@@ -756,21 +846,38 @@ eventGrid.addEventListener('click', (event) => {
     toggleRegistration(eventId);
 });
 
-connectFlow.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-connect-user]');
-    if (!button) {
-        return;
-    }
+if (connectFlow) {
+    connectFlow.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-connect-user]');
+        if (!button) {
+            return;
+        }
 
-    const user = getCurrentUser();
-    const targetEmail = normalizeEmail(button.dataset.connectUser);
-    if (!user || !targetEmail) {
-        return;
-    }
+        const user = getCurrentUser();
+        const targetEmail = normalizeEmail(button.dataset.connectUser);
 
-    connectUsers(user.email, targetEmail);
-    renderDashboard();
-});
+        if (!user || !targetEmail) {
+            return;
+        }
+
+        connectUsers(user.email, targetEmail);
+        renderDashboard();
+    });
+}
+
+if (closeDialogButton && eventDialog) {
+    closeDialogButton.addEventListener('click', () => {
+        eventDialog.close();
+    });
+}
+
+if (eventDialog) {
+    eventDialog.addEventListener('click', (event) => {
+        if (event.target === eventDialog) {
+            eventDialog.close();
+        }
+    });
+}
 
 filterButtons.forEach((button) => {
     button.addEventListener('click', () => {

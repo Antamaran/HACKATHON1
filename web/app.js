@@ -168,6 +168,7 @@ let draftTasks = [];
 let qrScannerStream = null;
 let qrScanFrameId = null;
 let qrDetector = null;
+let qrScannerCanvas = null;
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
@@ -511,13 +512,12 @@ function stopQrScanner() {
 }
 
 async function scanQrFrame() {
-    if (!qrDetector || !qrScannerVideo || !qrScannerStream) {
+    if (!qrScannerVideo || !qrScannerStream) {
         return;
     }
 
     try {
-        const codes = await qrDetector.detect(qrScannerVideo);
-        const scannedValue = codes.find((code) => code.rawValue)?.rawValue;
+        const scannedValue = await detectQrValue(qrScannerVideo);
 
         if (scannedValue) {
             stopQrScanner();
@@ -534,20 +534,54 @@ async function scanQrFrame() {
     qrScanFrameId = requestAnimationFrame(scanQrFrame);
 }
 
-async function startQrScanner() {
-    if (!('BarcodeDetector' in window)) {
-        setConnectionUrlMessage('QR scanning is not supported in this browser. Paste the connection URL instead.');
-        return;
+async function detectQrValue(video) {
+    if (qrDetector) {
+        const codes = await qrDetector.detect(video);
+        return codes.find((code) => code.rawValue)?.rawValue || '';
     }
 
+    if (!window.jsQR || !video.videoWidth || !video.videoHeight) {
+        return '';
+    }
+
+    qrScannerCanvas ||= document.createElement('canvas');
+    qrScannerCanvas.width = video.videoWidth;
+    qrScannerCanvas.height = video.videoHeight;
+
+    const context = qrScannerCanvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(video, 0, 0, qrScannerCanvas.width, qrScannerCanvas.height);
+
+    const imageData = context.getImageData(0, 0, qrScannerCanvas.width, qrScannerCanvas.height);
+    const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+    return code?.data || '';
+}
+
+function createQrDetector() {
+    if (!('BarcodeDetector' in window)) {
+        return null;
+    }
+
+    try {
+        return new BarcodeDetector({ formats: ['qr_code'] });
+    } catch {
+        return null;
+    }
+}
+
+async function startQrScanner() {
     if (!navigator.mediaDevices?.getUserMedia) {
         setConnectionUrlMessage('Camera access is not available. Paste the connection URL instead.');
         return;
     }
 
+    if (!('BarcodeDetector' in window) && !window.jsQR) {
+        setConnectionUrlMessage('QR scanning could not load. Check your connection, then try again.');
+        return;
+    }
+
     try {
         stopQrScanner();
-        qrDetector = new BarcodeDetector({ formats: ['qr_code'] });
+        qrDetector = createQrDetector();
         qrScannerStream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: 'environment' }

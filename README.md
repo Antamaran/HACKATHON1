@@ -42,14 +42,15 @@ Use it:
 ## Event database
 
 The app also stores events in `events.db`.
-Each event has an id, name, description, optional location, and type.
+Each event has an id, name, description, start date, end date, optional location, and type.
+Dates use `YYYY-MM-DD` format.
 The accepted event types are `profesional` and `leisure`.
 
 Use it:
 
 ```bash
-./event_app event-add event-001 "Coffee Match" "Meet someone new over coffee" "Main hall" leisure
-./event_app event-add event-002 "Product Workshop" "Build a quick demo together" profesional
+./event_app event-add event-001 "Coffee Match" "Meet someone new over coffee" 2026-06-01 2026-06-01 "Main hall" leisure
+./event_app event-add event-002 "Product Workshop" "Build a quick demo together" 2026-06-02 2026-06-03 profesional
 ./event_app event-show event-001
 ./event_app event-list
 ./event_app event-count

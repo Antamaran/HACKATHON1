@@ -15,6 +15,8 @@ struct User {
     std::set<std::string> connectedUsers;
 };
 
+// Stores participants in a simple local text file.
+// Format: email<TAB>name<TAB>connected_email,connected_email
 class UserDatabase {
 public:
     explicit UserDatabase(std::string filePath) : path(std::move(filePath)) {
@@ -76,8 +78,10 @@ public:
 
 private:
     std::string path;
+    // The email is used as the unique key for each user.
     std::map<std::string, User> users;
 
+    // Keep the tab-separated database format from breaking if text contains whitespace.
     static std::string cleanText(const std::string& value) {
         std::string cleaned = trim(value);
 
@@ -156,6 +160,7 @@ private:
         std::ifstream input(path);
         std::string line;
 
+        // Invalid or incomplete lines are skipped so one bad row does not break the app.
         while (std::getline(input, line)) {
             const std::vector<std::string> columns = split(line, '\t');
             if (columns.size() < 2) {
@@ -211,10 +216,14 @@ struct Event {
     std::string id;
     std::string name;
     std::string description;
+    std::string startDate;
+    std::string endDate;
     std::string location;
     std::string type;
 };
 
+// Stores event records in a simple local text file.
+// Format: id<TAB>name<TAB>description<TAB>start_date<TAB>end_date<TAB>location<TAB>type
 class EventDatabase {
 public:
     explicit EventDatabase(std::string filePath) : path(std::move(filePath)) {
@@ -225,12 +234,16 @@ public:
         const std::string& rawId,
         const std::string& rawName,
         const std::string& rawDescription,
+        const std::string& rawStartDate,
+        const std::string& rawEndDate,
         const std::string& rawLocation,
         const std::string& rawType
     ) {
         const std::string id = cleanText(rawId);
         const std::string name = cleanText(rawName);
         const std::string description = cleanText(rawDescription);
+        const std::string startDate = cleanText(rawStartDate);
+        const std::string endDate = cleanText(rawEndDate);
         const std::string location = cleanText(rawLocation);
         const std::string type = normalizeType(rawType);
 
@@ -246,13 +259,26 @@ public:
             throw std::invalid_argument("Event description cannot be empty.");
         }
 
+        if (!isValidDate(startDate)) {
+            throw std::invalid_argument("Start date must use YYYY-MM-DD format.");
+        }
+
+        if (!isValidDate(endDate)) {
+            throw std::invalid_argument("End date must use YYYY-MM-DD format.");
+        }
+
+        if (endDate < startDate) {
+            throw std::invalid_argument("End date cannot be before start date.");
+        }
+
         if (!isValidType(type)) {
             throw std::invalid_argument("Event type must be profesional or leisure.");
         }
 
-        const bool inserted = events.emplace(id, Event{id, name, description, location, type}).second;
+        const Event event{id, name, description, startDate, endDate, location, type};
+        const bool inserted = events.emplace(id, event).second;
         if (!inserted) {
-            events[id] = Event{id, name, description, location, type};
+            events[id] = event;
         }
 
         save();
@@ -324,6 +350,29 @@ private:
         return type == "profesional" || type == "leisure";
     }
 
+    static bool isValidDate(const std::string& date) {
+        // This checks a simple YYYY-MM-DD shape. It is enough for hackathon data entry,
+        // but it does not check month-specific day counts such as February 30.
+        if (date.size() != 10 || date[4] != '-' || date[7] != '-') {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < date.size(); ++i) {
+            if (i == 4 || i == 7) {
+                continue;
+            }
+
+            if (!std::isdigit(static_cast<unsigned char>(date[i]))) {
+                return false;
+            }
+        }
+
+        const int month = std::stoi(date.substr(5, 2));
+        const int day = std::stoi(date.substr(8, 2));
+
+        return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+    }
+
     static std::vector<std::string> split(const std::string& value, char delimiter) {
         std::vector<std::string> parts;
         std::string current;
@@ -345,20 +394,29 @@ private:
         std::ifstream input(path);
         std::string line;
 
+        // Events saved by older versions without dates are ignored instead of crashing.
         while (std::getline(input, line)) {
             const std::vector<std::string> columns = split(line, '\t');
-            if (columns.size() < 5) {
+            if (columns.size() < 7) {
                 continue;
             }
 
             const std::string id = cleanText(columns[0]);
             const std::string name = cleanText(columns[1]);
             const std::string description = cleanText(columns[2]);
-            const std::string location = cleanText(columns[3]);
-            const std::string type = normalizeType(columns[4]);
+            const std::string startDate = cleanText(columns[3]);
+            const std::string endDate = cleanText(columns[4]);
+            const std::string location = cleanText(columns[5]);
+            const std::string type = normalizeType(columns[6]);
 
-            if (!id.empty() && !name.empty() && !description.empty() && isValidType(type)) {
-                events[id] = Event{id, name, description, location, type};
+            if (!id.empty() &&
+                !name.empty() &&
+                !description.empty() &&
+                isValidDate(startDate) &&
+                isValidDate(endDate) &&
+                endDate >= startDate &&
+                isValidType(type)) {
+                events[id] = Event{id, name, description, startDate, endDate, location, type};
             }
         }
     }
@@ -373,6 +431,8 @@ private:
             output << event.id << '\t'
                    << event.name << '\t'
                    << event.description << '\t'
+                   << event.startDate << '\t'
+                   << event.endDate << '\t'
                    << event.location << '\t'
                    << event.type << '\n';
         }
@@ -404,6 +464,7 @@ void printUser(const User& user) {
 void printEvent(const Event& event) {
     std::cout << event.id << " | " << event.name
               << " | " << event.type
+              << " | " << event.startDate << " to " << event.endDate
               << " | " << event.description;
 
     if (!event.location.empty()) {
@@ -421,8 +482,8 @@ void printHelp() {
               << "  event_app show name@example.com\n"
               << "  event_app list\n"
               << "  event_app count\n"
-              << "  event_app event-add event-id \"Name\" \"Description\" \"Location\" profesional\n"
-              << "  event_app event-add event-id \"Name\" \"Description\" leisure\n"
+              << "  event_app event-add event-id \"Name\" \"Description\" 2026-06-01 2026-06-01 \"Location\" profesional\n"
+              << "  event_app event-add event-id \"Name\" \"Description\" 2026-06-01 2026-06-01 leisure\n"
               << "  event_app event-show event-id\n"
               << "  event_app event-list\n"
               << "  event_app event-count\n";
@@ -485,14 +546,15 @@ int main(int argc, char* argv[]) {
         }
 
         if (command == "event-add") {
-            if (argc < 6) {
-                std::cerr << "Please provide event id, name, description, and type.\n";
+            if (argc < 8) {
+                std::cerr << "Please provide event id, name, description, start date, end date, and type.\n";
                 return 1;
             }
 
-            const std::string location = argc >= 7 ? argv[5] : "";
-            const std::string type = argc >= 7 ? argv[6] : argv[5];
-            const bool inserted = eventDatabase.addEvent(argv[2], argv[3], argv[4], location, type);
+            // Location is optional. If it is missing, the final argument is the event type.
+            const std::string location = argc >= 9 ? argv[7] : "";
+            const std::string type = argc >= 9 ? argv[8] : argv[7];
+            const bool inserted = eventDatabase.addEvent(argv[2], argv[3], argv[4], argv[5], argv[6], location, type);
             std::cout << (inserted ? "Event saved: " : "Event updated: ") << argv[2] << " | " << argv[3] << '\n';
             return 0;
         }

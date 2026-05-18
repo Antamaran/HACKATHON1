@@ -33,6 +33,7 @@ Users have an XP value, starting at `0 XP`. Event organizers can add tasks to
 their events, and each task has a name, description, and XP value.
 Organizers can also add other event managers. Attendees can mark tasks as
 completed, and an event manager must approve the completion before XP is awarded.
+Each event info dialog includes a leaderboard of registered attendees sorted by XP.
 
 Run it locally:
 

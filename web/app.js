@@ -522,6 +522,27 @@ function renderPendingApprovals(event) {
     return approvalItems ? `<ul class="task-list">${approvalItems}</ul>` : '<p>No task completions waiting for approval.</p>';
 }
 
+function renderLeaderboard(event) {
+    const registrations = getRegistrations();
+    const registeredEmails = registrations[event.id] || [];
+    const users = getUsers()
+        .filter((user) => registeredEmails.includes(user.email))
+        .sort((first, second) => second.exp - first.exp || first.username.localeCompare(second.username));
+
+    const leaderboardItems = users.map((user, index) => `
+        <li>
+            <span class="leaderboard-rank">${index + 1}</span>
+            <strong>${escapeHtml(user.username)}</strong>
+            <span>${escapeHtml(user.email)}</span>
+            <span class="task-exp">${escapeHtml(user.exp)} XP</span>
+        </li>
+    `).join('');
+
+    return leaderboardItems
+        ? `<ol class="leaderboard-list">${leaderboardItems}</ol>`
+        : '<p>No attendees registered yet.</p>';
+}
+
 function openEventDialog(eventId) {
     const event = getEvents().find((item) => item.id === eventId);
     const user = getCurrentUser();
@@ -561,6 +582,10 @@ function openEventDialog(eventId) {
             <p>${escapeHtml(event.startDate)} to ${escapeHtml(event.endDate)}</p>
             <p>${escapeHtml(locationText)}</p>
             <p>Organizer: ${escapeHtml(organizerText)}</p>
+        </section>
+        <section class="dialog-section">
+            <h3>Leaderboard</h3>
+            ${renderLeaderboard(event)}
         </section>
         <section class="dialog-section">
             <h3>Tasks</h3>

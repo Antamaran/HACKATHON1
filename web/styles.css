@@ -404,7 +404,8 @@ form {
 }
 
 .task-list,
-.draft-task-list {
+.draft-task-list,
+.leaderboard-list {
     display: grid;
     gap: 8px;
     margin: 0;
@@ -413,7 +414,8 @@ form {
 }
 
 .task-list li,
-.draft-task-list li {
+.draft-task-list li,
+.leaderboard-list li {
     display: grid;
     gap: 4px;
     border: 1px solid var(--line);
@@ -422,8 +424,25 @@ form {
     background: #f8fafc;
 }
 
+.leaderboard-list li {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    align-items: center;
+}
+
+.leaderboard-rank {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    color: #ffffff;
+    background: var(--accent);
+    font-weight: 800;
+}
+
 .task-list strong,
-.draft-task-list strong {
+.draft-task-list strong,
+.leaderboard-list strong {
     color: var(--ink);
 }
 
@@ -526,7 +545,8 @@ form {
 
     .summary-strip,
     .two-column,
-    .inline-form {
+    .inline-form,
+    .leaderboard-list li {
         grid-template-columns: 1fr;
     }
 

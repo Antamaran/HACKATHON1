@@ -63,6 +63,40 @@ Then open:
 http://localhost:8000
 ```
 
+## Deploy on Netlify
+
+This repo is ready for Netlify. The `netlify.toml` file tells Netlify to publish
+the `web` folder as a static site.
+
+Deploy from Git:
+
+1. Push this repository to GitHub.
+2. In Netlify, choose **Add new site** > **Import an existing project**.
+3. Pick the GitHub repository.
+4. Use these settings:
+
+```text
+Build command: leave empty
+Publish directory: web
+```
+
+5. Deploy the site.
+
+The app will work on a Netlify URL such as:
+
+```text
+https://your-site-name.netlify.app
+```
+
+Invite links and connection links will automatically use the Netlify domain once
+users open the deployed site.
+
+Important: this is still a frontend-only prototype. Data is stored in each
+visitor's browser with `localStorage`, so different devices do not share the same
+database yet. The email verification code is also a local demo code, not a real
+email. To make data and email verification real for production, add a backend or
+Netlify Functions plus a database/email provider.
+
 ## User database
 
 The C++ app includes a tiny local user database for participants.

@@ -35,6 +35,10 @@ Organizers can also add other event managers. Attendees can mark tasks as
 completed, and an event manager must approve the completion before XP is awarded.
 Each event info dialog includes a leaderboard of registered attendees sorted by XP.
 
+Each signed-in user also gets a personal QR code in their profile panel. The QR
+code opens a connection page with a `Connect with user` button. After connecting,
+both users appear in each other's connected users list in the local browser data.
+
 Run it locally:
 
 ```bash

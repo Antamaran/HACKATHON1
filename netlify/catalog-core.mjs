@@ -143,7 +143,11 @@ async function fetchTicketmasterPage(apiKey, page, startDate, endDate) {
 export async function syncCatalog() {
   const apiKey = process.env.TICKETMASTER_API_KEY;
   if (!apiKey) {
-    throw new Error('Catalog sync is not configured. Set TICKETMASTER_API_KEY in Netlify environment variables.');
+    return {
+      ok: false,
+      skipped: true,
+      message: 'Public catalog sync is optional and is not configured yet. Organizer-created events still work.'
+    };
   }
 
   const adminEmail = process.env.CATALOG_ADMIN_EMAIL || 'catalog-admin@eventconnect.local';

@@ -523,6 +523,14 @@ function isCatalogEvent(event) {
 }
 
 async function syncCatalogEvents(showMessage = false) {
+    const user = getCurrentUser();
+    if (!isAdminUser(user)) {
+        if (showMessage && catalogSyncMessage) {
+            catalogSyncMessage.textContent = 'Public catalog sync is an optional admin tool. Organizer-created events are ready to use without it.';
+        }
+        return null;
+    }
+
     if (showMessage && catalogSyncMessage) {
         catalogSyncMessage.textContent = 'Syncing public events...';
         catalogSyncMessage.classList.remove('success-message');
@@ -539,14 +547,18 @@ async function syncCatalogEvents(showMessage = false) {
         await loadRemoteState();
 
         if (showMessage && catalogSyncMessage) {
-            catalogSyncMessage.textContent = `Public events synced. ${data.added || 0} new, ${data.total || 0} total.`;
-            catalogSyncMessage.classList.add('success-message');
+            catalogSyncMessage.textContent = data.skipped
+                ? data.message || 'Public catalog sync is optional and is not configured yet.'
+                : `Public events synced. ${data.added || 0} new, ${data.total || 0} total.`;
+            catalogSyncMessage.classList.toggle('success-message', !data.skipped);
         }
 
         return data;
     } catch (error) {
         if (showMessage && catalogSyncMessage) {
-            catalogSyncMessage.textContent = error.message;
+            catalogSyncMessage.textContent = error.message.includes('TICKETMASTER_API_KEY')
+                ? 'Public catalog sync is optional and is not configured yet. You can still create, open, and join organizer-created events.'
+                : error.message;
         }
         return null;
     }
@@ -1908,6 +1920,9 @@ function renderDashboard() {
     userExp.textContent = String(user?.exp || 0);
     userLevel.textContent = String(user ? getLevel(user.exp) : 1);
     eventGrid.innerHTML = `${renderInviteNotice(user)}${renderEventDiscovery(visibleEvents, user)}`;
+    if (syncCatalogButton) {
+        syncCatalogButton.classList.toggle('hidden', !isAdminUser(user));
+    }
     renderProfile(user);
 }
 
@@ -3718,7 +3733,6 @@ logoutButton.addEventListener('click', () => {
 
 // Seed only once so user-created events are not overwritten on refresh.
 async function initializeApp() {
-    await syncCatalogEvents(false);
     await loadRemoteState();
     await ensureAdminAccount();
 

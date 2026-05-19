@@ -159,9 +159,12 @@ so development does not get blocked.
 
 ### Public Event Catalog
 
-The app can automatically add upcoming public concerts and live events into
-Event Connect. The global catalog sync uses the Ticketmaster Discovery API from
-the Netlify Function in `netlify/functions/catalog-sync.mjs`.
+The app is primarily a live-event gamification layer. Organizer-created events
+are the source of truth and do not require Ticketmaster.
+
+There is an optional admin-only catalog sync that can add upcoming public
+concerts and live events into Event Connect. It uses the Ticketmaster Discovery
+API from the Netlify Function in `netlify/functions/catalog-sync.mjs`.
 
 Add this Netlify environment variable:
 
@@ -179,12 +182,13 @@ CATALOG_SEGMENT=Music
 CATALOG_SYNC_PAGES=3
 ```
 
-After redeploying, Netlify runs the catalog sync every 6 hours and adds events
-happening within the next 3 months into the global shared event list before
-visitors arrive. The frontend also calls the sync function on app load, and
-organizers can click **Sync public events** in the event browser to refresh the
-global catalog manually. The events are owned by `CATALOG_ADMIN_EMAIL` and
-include starter tasks.
+When configured, Netlify can run the catalog sync every 6 hours and add events
+happening within the next 3 months into the global shared event list. The
+frontend does not call Ticketmaster on app load, and public event links such as
+`index.html?event=EVENT_ID` never require catalog sync. The admin account can
+click **Sync public events** from the organizer tools to refresh the optional
+catalog manually. The events are owned by `CATALOG_ADMIN_EMAIL` and include
+starter tasks.
 
 ### Shared Data
 

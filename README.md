@@ -148,9 +148,9 @@ so development does not get blocked.
 
 ### Public Event Catalog
 
-Organizers can search a public event catalog and import concerts or other live
-events into Event Connect. The catalog uses the Ticketmaster Discovery API from
-the Netlify Function in `netlify/functions/event-catalog.mjs`.
+The app can automatically add upcoming public concerts and live events into
+Event Connect. The global catalog sync uses the Ticketmaster Discovery API from
+the Netlify Function in `netlify/functions/catalog-sync.mjs`.
 
 Add this Netlify environment variable:
 
@@ -158,9 +158,21 @@ Add this Netlify environment variable:
 TICKETMASTER_API_KEY=your_ticketmaster_discovery_api_key
 ```
 
-After redeploying, organizers can search by keyword, city, country, and date
-range, then click **Create game** to add the result as a normal Event Connect
-event with starter tasks.
+Optional catalog settings:
+
+```text
+CATALOG_ADMIN_EMAIL=admin@example.com
+CATALOG_COUNTRY_CODE=US
+CATALOG_CITY=New York
+CATALOG_SEGMENT=Music
+CATALOG_SYNC_PAGES=3
+```
+
+After redeploying, the frontend calls the sync function on app load and adds
+events happening within the next 3 months into the global shared event list. The
+events are owned by `CATALOG_ADMIN_EMAIL` and include starter tasks. Organizers
+can also click **Sync public events** in the event browser to refresh the global
+catalog manually.
 
 ### Shared Data
 

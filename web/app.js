@@ -131,14 +131,14 @@ const dashboardView = document.querySelector('#dashboardView');
 const loginForm = document.querySelector('#loginForm');
 const verificationForm = document.querySelector('#verificationForm');
 const eventForm = document.querySelector('#eventForm');
-const catalogSearchForm = document.querySelector('#catalogSearchForm');
-const catalogKeywordInput = document.querySelector('#catalogKeywordInput');
-const catalogCityInput = document.querySelector('#catalogCityInput');
-const catalogCountryInput = document.querySelector('#catalogCountryInput');
-const catalogStartDateInput = document.querySelector('#catalogStartDateInput');
-const catalogEndDateInput = document.querySelector('#catalogEndDateInput');
-const catalogMessage = document.querySelector('#catalogMessage');
-const catalogResults = document.querySelector('#catalogResults');
+const eventSearchForm = document.querySelector('#eventSearchForm');
+const eventSearchInput = document.querySelector('#eventSearchInput');
+const eventTypeFilterInput = document.querySelector('#eventTypeFilterInput');
+const eventSourceFilterInput = document.querySelector('#eventSourceFilterInput');
+const eventFromFilterInput = document.querySelector('#eventFromFilterInput');
+const eventToFilterInput = document.querySelector('#eventToFilterInput');
+const syncCatalogButton = document.querySelector('#syncCatalogButton');
+const catalogSyncMessage = document.querySelector('#catalogSyncMessage');
 const eventGrid = document.querySelector('#eventGrid');
 const welcomeTitle = document.querySelector('#welcomeTitle');
 const loginMessage = document.querySelector('#loginMessage');
@@ -153,7 +153,6 @@ const createdEventLinkPanel = document.querySelector('#createdEventLinkPanel');
 const createdEventLinkInput = document.querySelector('#createdEventLinkInput');
 const copyCreatedEventLinkButton = document.querySelector('#copyCreatedEventLinkButton');
 const logoutButton = document.querySelector('#logoutButton');
-const filterButtons = document.querySelectorAll('.filter-button');
 const totalEvents = document.querySelector('#totalEvents');
 const registeredCount = document.querySelector('#registeredCount');
 const userCount = document.querySelector('#userCount');
@@ -185,7 +184,10 @@ let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
 let activeConnection = getConnectionFromUrl();
 let draftTasks = [];
-let catalogEvents = [];
+let activeEventSearch = '';
+let activeSourceFilter = 'all';
+let activeFromFilter = '';
+let activeToFilter = '';
 let qrScannerStream = null;
 let qrScanFrameId = null;
 let qrDetector = null;
@@ -471,6 +473,40 @@ function isEventMode() {
 
 function getEventById(eventId) {
     return getEvents().find((event) => event.id === eventId) || null;
+}
+
+function isCatalogEvent(event) {
+    return Boolean(event.source || event.sourceId || event.sourceUrl);
+}
+
+async function syncCatalogEvents(showMessage = false) {
+    if (showMessage && catalogSyncMessage) {
+        catalogSyncMessage.textContent = 'Syncing public events...';
+        catalogSyncMessage.classList.remove('success-message');
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/.netlify/functions/catalog-sync`);
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Public event sync failed.');
+        }
+
+        await loadRemoteState();
+
+        if (showMessage && catalogSyncMessage) {
+            catalogSyncMessage.textContent = `Public events synced. ${data.added || 0} new, ${data.total || 0} total.`;
+            catalogSyncMessage.classList.add('success-message');
+        }
+
+        return data;
+    } catch (error) {
+        if (showMessage && catalogSyncMessage) {
+            catalogSyncMessage.textContent = error.message;
+        }
+        return null;
+    }
 }
 
 function getInviteFromUrl() {
@@ -843,6 +879,10 @@ function normalizeEvent(event) {
         managerEmails: (event.managerEmails || []).map(normalizeEmail),
         closedAt: event.closedAt || '',
         closedBy: event.closedBy || '',
+        source: event.source || '',
+        sourceId: event.sourceId || '',
+        sourceUrl: event.sourceUrl || '',
+        sourceImage: event.sourceImage || '',
         startTime: event.startTime || '09:00',
         endTime: event.endTime || '17:00',
         tasks: (event.tasks || []).map(normalizeTask)
@@ -1337,19 +1377,6 @@ function createTaskId(name, index) {
     return `${slug || 'task'}-${index}`;
 }
 
-function createCatalogEventId(catalogEvent) {
-    const source = String(catalogEvent.source || 'catalog')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-    const sourceId = String(catalogEvent.sourceId || catalogEvent.name || Date.now())
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-
-    return `${source || 'catalog'}-${sourceId || Date.now().toString(36)}`;
-}
-
 function isRegistered(eventId) {
     const user = getCurrentUser();
     const registrations = getRegistrations();
@@ -1392,6 +1419,7 @@ function renderEventCard(event) {
             <div class="event-meta">
                 <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
                 <span class="pill">${escapeHtml(formatEventDateTime(event))}</span>
+                ${isCatalogEvent(event) ? '<span class="pill catalog-source">Catalog</span>' : ''}
                 ${closed ? '<span class="pill closed">Closed</span>' : ''}
             </div>
             <h3>${escapeHtml(event.name)}</h3>
@@ -1408,6 +1436,44 @@ function renderEventCard(event) {
     `;
 }
 
+function matchesEventSearch(event) {
+    const query = activeEventSearch.trim().toLowerCase();
+    if (!query) {
+        return true;
+    }
+
+    return [
+        event.name,
+        event.description,
+        event.location,
+        event.source
+    ].some((value) => String(value || '').toLowerCase().includes(query));
+}
+
+function matchesEventSource(event) {
+    if (activeSourceFilter === 'all') {
+        return true;
+    }
+
+    if (activeSourceFilter === 'catalog') {
+        return isCatalogEvent(event);
+    }
+
+    return !isCatalogEvent(event);
+}
+
+function matchesEventDateRange(event) {
+    if (activeFromFilter && event.startDate < activeFromFilter) {
+        return false;
+    }
+
+    if (activeToFilter && event.startDate > activeToFilter) {
+        return false;
+    }
+
+    return true;
+}
+
 function renderDashboard() {
     processEventRewards();
 
@@ -1416,9 +1482,14 @@ function renderDashboard() {
     const users = getUsers();
     const registrations = getRegistrations();
     const registeredEventIds = events.filter((event) => registrations[event.id]?.includes(user?.email)).length;
-    let visibleEvents = activeFilter === 'all'
-        ? events
-        : events.filter((event) => event.type === activeFilter);
+    let visibleEvents = events
+        .filter((event) => activeFilter === 'all' || event.type === activeFilter)
+        .filter(matchesEventSearch)
+        .filter(matchesEventSource)
+        .filter(matchesEventDateRange)
+        .sort((first, second) => (
+            makeLocalDateTime(first.startDate, first.startTime) - makeLocalDateTime(second.startDate, second.startTime)
+        ));
 
     if (activeInvite) {
         visibleEvents = [...visibleEvents].sort((first, second) => {
@@ -1441,7 +1512,7 @@ function renderDashboard() {
     userCount.textContent = String(users.length);
     userExp.textContent = String(user?.exp || 0);
     userLevel.textContent = String(user ? getLevel(user.exp) : 1);
-    eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.map(renderEventCard).join('')}`;
+    eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.length ? visibleEvents.map(renderEventCard).join('') : '<p class="empty-state">No events match your search.</p>'}`;
     renderProfile(user);
 }
 
@@ -2497,163 +2568,6 @@ function renderDraftTasks() {
     `).join('');
 }
 
-function formatCatalogResultDate(catalogEvent) {
-    const date = catalogEvent.startDate || 'Date to be announced';
-    const time = catalogEvent.startTime || '';
-    return `${date}${time ? ` ${time}` : ''}`;
-}
-
-function renderCatalogResults() {
-    if (!catalogResults) {
-        return;
-    }
-
-    if (!catalogEvents.length) {
-        catalogResults.innerHTML = '<p class="empty-state">No catalog results yet.</p>';
-        return;
-    }
-
-    const existingEventIds = new Set(getEvents().map((event) => event.id));
-    catalogResults.innerHTML = catalogEvents.map((catalogEvent, index) => {
-        const eventId = createCatalogEventId(catalogEvent);
-        const alreadyImported = existingEventIds.has(eventId);
-
-        return `
-            <article class="catalog-card">
-                ${catalogEvent.image ? `<img src="${escapeHtml(catalogEvent.image)}" alt="">` : ''}
-                <div>
-                    <strong>${escapeHtml(catalogEvent.name)}</strong>
-                    <span>${escapeHtml(formatCatalogResultDate(catalogEvent))}</span>
-                    <span>${escapeHtml(catalogEvent.location || 'Location to be announced')}</span>
-                    ${catalogEvent.url ? `<a href="${escapeHtml(catalogEvent.url)}" target="_blank" rel="noreferrer">Source listing</a>` : ''}
-                </div>
-                <button class="secondary-button" type="button" data-import-catalog="${index}" ${alreadyImported ? 'disabled' : ''}>
-                    ${alreadyImported ? 'Imported' : 'Create game'}
-                </button>
-            </article>
-        `;
-    }).join('');
-}
-
-async function searchCatalogEvents() {
-    if (!catalogSearchForm || !catalogMessage) {
-        return;
-    }
-
-    const params = new URLSearchParams();
-    params.set('keyword', catalogKeywordInput.value.trim());
-
-    if (catalogCityInput.value.trim()) {
-        params.set('city', catalogCityInput.value.trim());
-    }
-
-    if (catalogCountryInput.value.trim()) {
-        params.set('countryCode', catalogCountryInput.value.trim().toUpperCase());
-    }
-
-    if (catalogStartDateInput.value) {
-        params.set('startDate', catalogStartDateInput.value);
-    }
-
-    if (catalogEndDateInput.value) {
-        params.set('endDate', catalogEndDateInput.value);
-    }
-
-    catalogMessage.textContent = 'Searching public events...';
-    catalogMessage.classList.remove('success-message');
-    catalogEvents = [];
-    renderCatalogResults();
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/.netlify/functions/event-catalog?${params.toString()}`);
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Catalog search failed.');
-        }
-
-        catalogEvents = data.events || [];
-        catalogMessage.textContent = catalogEvents.length
-            ? `${catalogEvents.length} public event${catalogEvents.length === 1 ? '' : 's'} found.`
-            : 'No matching public events found.';
-        catalogMessage.classList.add('success-message');
-        renderCatalogResults();
-    } catch (error) {
-        catalogMessage.textContent = error.message;
-    }
-}
-
-function buildImportedEvent(catalogEvent, organizerEmail) {
-    const startDate = catalogEvent.startDate || new Date().toISOString().slice(0, 10);
-    const startTime = catalogEvent.startTime || '19:00';
-    const endDate = catalogEvent.endDate || startDate;
-    const endTime = catalogEvent.endTime || '22:00';
-
-    return normalizeEvent({
-        id: createCatalogEventId(catalogEvent),
-        name: catalogEvent.name,
-        description: catalogEvent.description || `Public event imported from ${catalogEvent.source || 'catalog'}.`,
-        startDate,
-        startTime,
-        endDate,
-        endTime,
-        location: catalogEvent.location || '',
-        type: 'leisure',
-        inviteEmails: [],
-        organizerEmail,
-        managerEmails: [],
-        source: catalogEvent.source || 'catalog',
-        sourceId: catalogEvent.sourceId || '',
-        sourceUrl: catalogEvent.url || '',
-        tasks: [
-            {
-                id: createTaskId('Meet three attendees', 0),
-                name: 'Meet three attendees',
-                description: 'Connect with three people at this event.',
-                exp: 30
-            },
-            {
-                id: createTaskId('Share a favorite moment', 1),
-                name: 'Share a favorite moment',
-                description: 'Find someone new and share what you enjoyed most.',
-                exp: 20
-            }
-        ]
-    });
-}
-
-async function importCatalogEvent(index) {
-    const user = getCurrentUser();
-    const catalogEvent = catalogEvents[index];
-    if (!user || !catalogEvent || !catalogMessage) {
-        return;
-    }
-
-    await refreshSharedState();
-    const events = getEvents();
-    const importedEvent = buildImportedEvent(catalogEvent, user.email);
-
-    if (events.some((event) => event.id === importedEvent.id)) {
-        catalogMessage.textContent = 'This catalog event is already in your events.';
-        renderCatalogResults();
-        return;
-    }
-
-    events.push(importedEvent);
-    saveEvents(events);
-    const eventLink = makeEventGameLink(importedEvent.id);
-
-    catalogMessage.classList.add('success-message');
-    catalogMessage.textContent = `Event game created for ${importedEvent.name}.`;
-
-    if (createdEventLinkInput) {
-        createdEventLinkInput.value = eventLink;
-    }
-    createdEventLinkPanel?.classList.remove('hidden');
-    renderCatalogResults();
-    renderDashboard();
-}
-
 function clearTaskInputs() {
     document.querySelector('#taskNameInput').value = '';
     document.querySelector('#taskDescriptionInput').value = '';
@@ -2691,24 +2605,6 @@ draftTaskList.addEventListener('click', (event) => {
     draftTasks.splice(Number(button.dataset.removeTask), 1);
     renderDraftTasks();
 });
-
-if (catalogSearchForm) {
-    catalogSearchForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        searchCatalogEvents();
-    });
-}
-
-if (catalogResults) {
-    catalogResults.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-import-catalog]');
-        if (!button) {
-            return;
-        }
-
-        importCatalogEvent(Number(button.dataset.importCatalog));
-    });
-}
 
 eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2984,14 +2880,36 @@ if (eventDialog) {
     });
 }
 
-filterButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-        filterButtons.forEach((item) => item.classList.remove('active'));
-        button.classList.add('active');
-        activeFilter = button.dataset.filter;
+if (eventSearchForm) {
+    eventSearchForm.addEventListener('input', () => {
+        activeEventSearch = eventSearchInput?.value || '';
+        activeFilter = eventTypeFilterInput?.value || 'all';
+        activeSourceFilter = eventSourceFilterInput?.value || 'all';
+        activeFromFilter = eventFromFilterInput?.value || '';
+        activeToFilter = eventToFilterInput?.value || '';
         renderDashboard();
     });
-});
+
+    eventSearchForm.addEventListener('reset', () => {
+        setTimeout(() => {
+            activeEventSearch = '';
+            activeFilter = 'all';
+            activeSourceFilter = 'all';
+            activeFromFilter = '';
+            activeToFilter = '';
+            renderDashboard();
+        }, 0);
+    });
+}
+
+if (syncCatalogButton) {
+    syncCatalogButton.addEventListener('click', async () => {
+        syncCatalogButton.disabled = true;
+        await syncCatalogEvents(true);
+        syncCatalogButton.disabled = false;
+        renderDashboard();
+    });
+}
 
 logoutButton.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEYS.currentUser);
@@ -3000,10 +2918,11 @@ logoutButton.addEventListener('click', () => {
 
 // Seed only once so user-created events are not overwritten on refresh.
 async function initializeApp() {
+    await syncCatalogEvents(false);
     await loadRemoteState();
 
     if (!localStorage.getItem(STORAGE_KEYS.events) || getEvents().length === 0) {
-        writeStore(STORAGE_KEYS.events, seedEvents);
+        await writeStore(STORAGE_KEYS.events, seedEvents);
     }
 
     showView();

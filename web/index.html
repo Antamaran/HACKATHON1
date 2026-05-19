@@ -236,12 +236,51 @@
                             <p class="eyebrow">Browse</p>
                             <h2>Available Events</h2>
                         </div>
-                        <div class="filter-group" role="group" aria-label="Filter events">
-                            <button class="filter-button active" type="button" data-filter="all">All</button>
-                            <button class="filter-button" type="button" data-filter="professional">Professional</button>
-                            <button class="filter-button" type="button" data-filter="leisure">Leisure</button>
-                        </div>
                     </div>
+
+                    <form class="event-search-panel" id="eventSearchForm">
+                        <label>
+                            Search events
+                            <input type="search" id="eventSearchInput" placeholder="Artist, venue, city, description">
+                        </label>
+
+                        <div class="search-row">
+                            <label>
+                                Type
+                                <select id="eventTypeFilterInput">
+                                    <option value="all">All types</option>
+                                    <option value="professional">Professional</option>
+                                    <option value="leisure">Leisure</option>
+                                </select>
+                            </label>
+                            <label>
+                                Source
+                                <select id="eventSourceFilterInput">
+                                    <option value="all">All sources</option>
+                                    <option value="catalog">Catalog</option>
+                                    <option value="manual">Manual</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="search-row">
+                            <label>
+                                From
+                                <input type="date" id="eventFromFilterInput">
+                            </label>
+                            <label>
+                                To
+                                <input type="date" id="eventToFilterInput">
+                            </label>
+                        </div>
+
+                        <div class="event-search-actions">
+                            <button class="secondary-button" type="button" id="syncCatalogButton">Sync public events</button>
+                            <button class="secondary-button" type="reset" id="clearEventSearchButton">Clear</button>
+                        </div>
+                        <p class="form-message" id="catalogSyncMessage"></p>
+                    </form>
+
                     <div class="event-grid" id="eventGrid"></div>
                 </section>
 
@@ -294,47 +333,15 @@
                         </div>
                     </div>
 
-                    <section class="catalog-panel" aria-label="Event catalog search">
+                    <section class="catalog-panel" aria-label="Public catalog sync">
                         <div class="section-heading compact">
                             <div>
                                 <p class="eyebrow">Catalog</p>
-                                <h2>Import public events</h2>
+                                <h2>Automatic public events</h2>
                             </div>
                         </div>
 
-                        <form id="catalogSearchForm">
-                            <label>
-                                Search
-                                <input type="search" id="catalogKeywordInput" placeholder="BTS, jazz, hackathon..." required>
-                            </label>
-
-                            <div class="two-column">
-                                <label>
-                                    City
-                                    <input type="text" id="catalogCityInput" placeholder="Optional">
-                                </label>
-                                <label>
-                                    Country
-                                    <input type="text" id="catalogCountryInput" maxlength="2" placeholder="US">
-                                </label>
-                            </div>
-
-                            <div class="two-column">
-                                <label>
-                                    From
-                                    <input type="date" id="catalogStartDateInput">
-                                </label>
-                                <label>
-                                    To
-                                    <input type="date" id="catalogEndDateInput">
-                                </label>
-                            </div>
-
-                            <button class="secondary-button" type="submit">Search catalog</button>
-                            <p class="form-message" id="catalogMessage"></p>
-                        </form>
-
-                        <div class="catalog-results" id="catalogResults"></div>
+                        <p class="helper-text">Upcoming public events are synced into the global event list and owned by the configured catalog admin.</p>
                     </section>
 
                     <form id="eventForm">

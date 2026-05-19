@@ -316,15 +316,13 @@ form {
     font-size: clamp(2rem, 4vw, 3.4rem);
 }
 
-.secondary-button,
-.filter-button {
+.secondary-button {
     color: var(--ink);
     border: 1px solid var(--line);
     background: #ffffff;
 }
 
-.secondary-button:hover,
-.filter-button:hover {
+.secondary-button:hover {
     background: #eef2f5;
 }
 
@@ -371,24 +369,6 @@ form {
 
 .section-heading.compact {
     margin-bottom: 4px;
-}
-
-.filter-group {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.filter-button {
-    min-height: 38px;
-    padding: 0 14px;
-    font-size: 0.88rem;
-}
-
-.filter-button.active {
-    color: #ffffff;
-    border-color: var(--accent);
-    background: var(--accent);
 }
 
 .event-grid {
@@ -548,50 +528,6 @@ form {
     padding-bottom: 20px;
 }
 
-.catalog-results {
-    display: grid;
-    gap: 10px;
-}
-
-.catalog-card {
-    display: grid;
-    grid-template-columns: 74px minmax(0, 1fr);
-    gap: 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 10px;
-    background: #ffffff;
-}
-
-.catalog-card img {
-    width: 74px;
-    height: 74px;
-    border-radius: 8px;
-    object-fit: cover;
-    background: #eef2f5;
-}
-
-.catalog-card div {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-}
-
-.catalog-card span,
-.catalog-card a {
-    color: var(--muted);
-    font-size: 0.84rem;
-    overflow-wrap: anywhere;
-}
-
-.catalog-card a {
-    color: var(--accent-strong);
-}
-
-.catalog-card button {
-    grid-column: 1 / -1;
-}
-
 .event-actions {
     display: flex;
     align-items: center;
@@ -611,6 +547,28 @@ form {
     color: var(--accent);
     border: 1px solid var(--accent);
     background: #ffffff;
+}
+
+.pill.catalog-source {
+    color: #ffffff;
+    background: #475569;
+}
+
+.event-search-panel {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    background: #ffffff;
+}
+
+.search-row,
+.event-search-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
 }
 
 .invite-list {
@@ -810,6 +768,8 @@ form {
     .summary-strip,
     .two-column,
     .inline-form,
+    .search-row,
+    .event-search-actions,
     .leaderboard-list li {
         grid-template-columns: 1fr;
     }

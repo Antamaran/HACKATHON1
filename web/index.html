@@ -13,21 +13,32 @@
                 <img src="assets/event-mark.svg" alt="" class="brand-mark">
                 <p class="eyebrow">Hackathon event app</p>
                 <h1>Event Connect</h1>
-                <p class="intro">Log in with your name and email to discover sessions, create event ideas, and register for the ones you want to join.</p>
+                <p class="intro">Join events as a guest first. Create an account when you want to keep your XP for the next event.</p>
             </div>
 
             <form class="login-panel" id="loginForm">
-                <label>
-                    Username
-                    <input type="text" id="usernameInput" name="username" autocomplete="name" required>
-                </label>
+                <div>
+                    <p class="eyebrow">Account access</p>
+                    <h2>Log in or create an account</h2>
+                    <p class="helper-text">Use an account when you want to carry guest XP into future events.</p>
+                </div>
 
                 <label>
                     Email
                     <input type="email" id="emailInput" name="email" autocomplete="email" required>
                 </label>
 
-                <button type="submit">Enter app</button>
+                <label>
+                    Password
+                    <input type="password" id="passwordInput" name="password" autocomplete="current-password" required>
+                </label>
+
+                <label>
+                    Display name for new accounts
+                    <input type="text" id="usernameInput" name="username" autocomplete="name">
+                </label>
+
+                <button type="submit">Continue</button>
                 <p class="form-message" id="loginMessage"></p>
             </form>
 
@@ -63,7 +74,7 @@
                 <p class="helper-text">Complete quests, meet people, earn XP.</p>
                 <p class="form-message" id="eventLandingMessage"></p>
                 <div class="button-row landing-actions">
-                    <button type="button" id="joinEventButton">JOIN EVENT</button>
+                    <button class="guest-join-button" type="button" id="joinEventButton">JOIN THE EVENT AS A GUEST</button>
                     <button class="secondary-button" type="button" id="eventLoginButton">Already have an account? Log in</button>
                 </div>
             </div>

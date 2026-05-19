@@ -30,7 +30,8 @@ const REMOTE_STORAGE_KEYS = [
 
 const SESSION_KEYS = {
     pendingSignup: 'eventConnect.pendingSignup',
-    pendingGuestXpSave: 'eventConnect.pendingGuestXpSave'
+    pendingGuestXpSave: 'eventConnect.pendingGuestXpSave',
+    pendingAccountEventJoin: 'eventConnect.pendingAccountEventJoin'
 };
 
 // Starter events shown the first time someone opens the site in this browser.
@@ -129,6 +130,9 @@ const eventGrid = document.querySelector('#eventGrid');
 const welcomeTitle = document.querySelector('#welcomeTitle');
 const loginMessage = document.querySelector('#loginMessage');
 const verificationMessage = document.querySelector('#verificationMessage');
+const emailInput = document.querySelector('#emailInput');
+const passwordInput = document.querySelector('#passwordInput');
+const usernameInput = document.querySelector('#usernameInput');
 const demoCodeBox = document.querySelector('#demoCodeBox');
 const cancelVerificationButton = document.querySelector('#cancelVerificationButton');
 const eventMessage = document.querySelector('#eventMessage');
@@ -696,6 +700,7 @@ function normalizeUser(user) {
     return {
         username: user.username,
         email: user.email,
+        passwordHash: user.passwordHash || '',
         exp: Number.isFinite(Number(user.exp)) ? Number(user.exp) : 0,
         connectedUsers: Array.isArray(user.connectedUsers)
             ? user.connectedUsers.map(normalizeEmail).filter(Boolean)
@@ -742,6 +747,7 @@ async function saveUser(user) {
         users[existingIndex] = {
             ...users[existingIndex],
             ...normalizedUser,
+            passwordHash: normalizedUser.passwordHash || users[existingIndex].passwordHash || '',
             connectedUsers: normalizedUser.connectedUsers.length
                 ? normalizedUser.connectedUsers
                 : users[existingIndex].connectedUsers
@@ -1015,6 +1021,18 @@ function processEventRewards() {
 
 function generateVerificationCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function hashPassword(password) {
+    if (window.crypto?.subtle && window.TextEncoder) {
+        const encodedPassword = new TextEncoder().encode(password);
+        const digest = await window.crypto.subtle.digest('SHA-256', encodedPassword);
+        return Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    return `local:${password}`;
 }
 
 async function startEmailVerification(user) {
@@ -2033,10 +2051,29 @@ function showView() {
             return;
         }
 
-        const participant = user ? joinEventWithCurrentUser(eventId) : null;
-        if (participant) {
+        const pendingGuestSave = readSession(SESSION_KEYS.pendingGuestXpSave, null);
+        if (user && !user.isGuest && pendingGuestSave?.eventId === eventId) {
+            saveGuestProgressToAccount(user.email);
+            const mergedParticipant = getCurrentEventParticipant(eventId);
+            if (mergedParticipant) {
+                renderEventGameDashboard(event, mergedParticipant);
+                return;
+            }
+        }
+
+        const existingParticipant = getCurrentEventParticipant(eventId);
+        const shouldJoinWithAccount = user && !user.isGuest && readSession(SESSION_KEYS.pendingAccountEventJoin, '') === eventId;
+
+        if (shouldJoinWithAccount) {
+            sessionStorage.removeItem(SESSION_KEYS.pendingAccountEventJoin);
+            const participant = joinEventWithCurrentUser(eventId);
             saveGuestProgressToAccount(user.email);
             renderEventGameDashboard(event, getCurrentEventParticipant(eventId) || participant);
+            return;
+        }
+
+        if (existingParticipant) {
+            renderEventGameDashboard(event, existingParticipant);
             return;
         }
 
@@ -2077,13 +2114,31 @@ if (joinEventButton) {
 
 if (eventLoginButton) {
     eventLoginButton.addEventListener('click', () => {
+        const eventId = getEventIdFromUrl();
+        const user = getCurrentUser();
+
+        if (eventId) {
+            writeSession(SESSION_KEYS.pendingAccountEventJoin, eventId);
+        }
+
+        if (user && !user.isGuest && eventId) {
+            const targetEvent = getEventById(eventId);
+            const participant = joinEventWithCurrentUser(eventId);
+            sessionStorage.removeItem(SESSION_KEYS.pendingAccountEventJoin);
+            saveGuestProgressToAccount(user.email);
+            if (targetEvent && participant) {
+                renderEventGameDashboard(targetEvent, getCurrentEventParticipant(eventId) || participant);
+            }
+            return;
+        }
+
         eventLandingView?.classList.add('hidden');
         eventGameView?.classList.add('hidden');
         loginView?.classList.remove('hidden');
         loginForm.classList.remove('hidden');
         verificationForm.classList.add('hidden');
-        loginMessage.textContent = 'Log in, then you will join this event game automatically.';
-        document.querySelector('#usernameInput')?.focus();
+        loginMessage.textContent = 'Log in with your email and password, then you will join this event.';
+        emailInput?.focus();
     });
 }
 
@@ -2119,21 +2174,42 @@ if (guestJoinForm) {
 loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
 
-    const username = document.querySelector('#usernameInput').value.trim();
-    const email = normalizeEmail(document.querySelector('#emailInput').value);
+    const username = usernameInput.value.trim();
+    const email = normalizeEmail(emailInput.value);
+    const password = passwordInput.value;
 
-    if (!username || !email) {
-        loginMessage.textContent = 'Please enter both your username and email.';
+    if (!email || !password) {
+        loginMessage.textContent = 'Please enter your email and password.';
         return;
     }
 
+    if (password.length < 6) {
+        loginMessage.textContent = 'Use a password with at least 6 characters.';
+        return;
+    }
+
+    const passwordHash = await hashPassword(password);
     const existingUser = findUserByEmail(email);
     if (!existingUser) {
-        await startEmailVerification({ username, email, exp: 0 });
+        if (!username) {
+            loginMessage.textContent = 'Add a display name to create a new account.';
+            return;
+        }
+
+        await startEmailVerification({ username, email, passwordHash, exp: 0 });
         return;
     }
 
-    await saveUser({ ...existingUser, username });
+    if (existingUser.passwordHash && existingUser.passwordHash !== passwordHash) {
+        loginMessage.textContent = 'That password does not match this account.';
+        return;
+    }
+
+    await saveUser({
+        ...existingUser,
+        username: username || existingUser.username,
+        passwordHash: existingUser.passwordHash || passwordHash
+    });
     loginForm.reset();
     loginMessage.textContent = '';
     showView();
@@ -2399,8 +2475,8 @@ if (saveXpButton) {
         loginView?.classList.remove('hidden');
         loginForm.classList.remove('hidden');
         verificationForm.classList.add('hidden');
-        loginMessage.textContent = 'Log in or sign up to save your guest XP into your Event Passport.';
-        document.querySelector('#usernameInput')?.focus();
+        loginMessage.textContent = 'Log in or create an account with a password to save your guest XP into your Event Passport.';
+        emailInput?.focus();
     });
 }
 

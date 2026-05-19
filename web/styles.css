@@ -452,7 +452,22 @@ form {
 }
 
 .landing-actions {
+    display: grid;
+    grid-template-columns: 1fr;
     max-width: 560px;
+}
+
+.guest-join-button {
+    min-height: 64px;
+    padding: 0 22px;
+    font-size: 1rem;
+}
+
+.landing-actions .secondary-button {
+    justify-self: start;
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 0.86rem;
 }
 
 .event-game-view {

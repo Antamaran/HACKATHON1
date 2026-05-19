@@ -2,6 +2,8 @@ import { getStore } from '@netlify/blobs';
 
 const TICKETMASTER_API_URL = 'https://app.ticketmaster.com/discovery/v2/events.json';
 const EVENTS_KEY = 'eventConnect.events';
+const CATALOG_META_KEY = 'eventConnect.catalogSyncMeta';
+const DEFAULT_CATALOG_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function addHours(date, time, hours) {
   const value = new Date(`${date || new Date().toISOString().slice(0, 10)}T${time || '19:00'}`);
@@ -177,4 +179,39 @@ export async function syncCatalog() {
     added: importedEvents.filter((event) => !existingIds.has(event.id)).length,
     total: mergedEvents.length
   };
+}
+
+export async function syncCatalogIfStale(maxAgeMs = DEFAULT_CATALOG_MAX_AGE_MS) {
+  const apiKey = process.env.TICKETMASTER_API_KEY;
+  if (!apiKey) {
+    return {
+      ok: false,
+      skipped: true,
+      message: 'Public catalog sync is optional and is not configured yet. Organizer-created events still work.'
+    };
+  }
+
+  const store = getStore('event-connect-state');
+  const meta = await store.get(CATALOG_META_KEY, { type: 'json' }).catch(() => null);
+  const lastSyncedAt = Date.parse(meta?.lastSyncedAt || 0) || 0;
+
+  if (lastSyncedAt && Date.now() - lastSyncedAt < maxAgeMs) {
+    return {
+      ok: true,
+      skipped: true,
+      message: 'Ticketmaster catalog is already fresh.',
+      lastSyncedAt: meta.lastSyncedAt
+    };
+  }
+
+  const result = await syncCatalog();
+  if (result.ok) {
+    await store.setJSON(CATALOG_META_KEY, {
+      lastSyncedAt: new Date().toISOString(),
+      added: result.added,
+      total: result.total
+    });
+  }
+
+  return result;
 }

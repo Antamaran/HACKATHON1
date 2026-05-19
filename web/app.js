@@ -2262,7 +2262,7 @@ if (eventLoginButton) {
         loginView?.classList.remove('hidden');
         loginForm.classList.remove('hidden');
         verificationForm.classList.add('hidden');
-        loginMessage.textContent = 'Log in with your email and password, then you will join this event.';
+        loginMessage.textContent = 'Log in with your email, then you will join this event.';
         emailInput?.focus();
     });
 }
@@ -2308,17 +2308,17 @@ loginForm.addEventListener('submit', async (event) => {
     const email = normalizeEmail(emailInput.value);
     const password = passwordInput.value;
 
-    if (!email || !password) {
-        loginMessage.textContent = 'Please enter your email and password.';
+    if (!email) {
+        loginMessage.textContent = 'Please enter your email.';
         return;
     }
 
-    if (password.length < 6) {
+    if (password && password.length < 6) {
         loginMessage.textContent = 'Use a password with at least 6 characters.';
         return;
     }
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = password ? await hashPassword(password) : '';
     const existingUser = findUserByEmail(email);
     if (!existingUser) {
         if (!username) {
@@ -2330,7 +2330,7 @@ loginForm.addEventListener('submit', async (event) => {
         return;
     }
 
-    if (existingUser.passwordHash && existingUser.passwordHash !== passwordHash) {
+    if (passwordHash && existingUser.passwordHash && existingUser.passwordHash !== passwordHash) {
         loginMessage.textContent = 'That password does not match this account.';
         return;
     }
@@ -2615,7 +2615,7 @@ if (saveXpButton) {
         loginView?.classList.remove('hidden');
         loginForm.classList.remove('hidden');
         verificationForm.classList.add('hidden');
-        loginMessage.textContent = 'Log in or create an account with a password to save your guest XP into your Event Passport.';
+        loginMessage.textContent = 'Log in or create an account to save your guest XP into your Event Passport.';
         emailInput?.focus();
     });
 }

@@ -38,7 +38,8 @@ const REMOTE_STORAGE_KEYS = [
 const SESSION_KEYS = {
     pendingSignup: 'eventConnect.pendingSignup',
     pendingGuestXpSave: 'eventConnect.pendingGuestXpSave',
-    pendingAccountEventJoin: 'eventConnect.pendingAccountEventJoin'
+    pendingAccountEventJoin: 'eventConnect.pendingAccountEventJoin',
+    questionnaireDraft: 'eventConnect.questionnaireDraft'
 };
 
 // Starter events shown the first time someone opens the site in this browser.
@@ -948,6 +949,43 @@ function normalizeQuestionnaire(questionnaire) {
         }))
         .filter((item) => item.question && item.answer)
         .slice(0, 7);
+}
+
+function normalizeQuestionnaireDraft(questionnaire) {
+    return (Array.isArray(questionnaire) ? questionnaire : [])
+        .map((item) => ({
+            id: item.id || createQuestionId(),
+            question: String(item.question || ''),
+            answer: String(item.answer || '')
+        }))
+        .slice(0, 7);
+}
+
+function getQuestionnaireDraftKey(userEmail) {
+    return `${SESSION_KEYS.questionnaireDraft}:${normalizeEmail(userEmail)}`;
+}
+
+function getQuestionnaireDraft(userEmail) {
+    return readSession(getQuestionnaireDraftKey(userEmail), null);
+}
+
+function saveQuestionnaireDraft(userEmail, builder) {
+    if (!userEmail || !builder) {
+        return;
+    }
+
+    writeSession(getQuestionnaireDraftKey(userEmail), normalizeQuestionnaireDraft(readQuestionnaireBuilderRows(builder)));
+}
+
+function saveCurrentQuestionnaireDraft(builder) {
+    const user = getCurrentUser();
+    saveQuestionnaireDraft(user?.email, builder);
+}
+
+function clearQuestionnaireDraft(userEmail) {
+    if (userEmail) {
+        sessionStorage.removeItem(getQuestionnaireDraftKey(userEmail));
+    }
 }
 
 function normalizeUser(user) {
@@ -1920,7 +1958,8 @@ function renderQuestionnaireBuilder(user, builder = questionnaireBuilder) {
         return;
     }
 
-    const questions = normalizeQuestionnaire(user.questionnaire);
+    const draft = getQuestionnaireDraft(user.email);
+    const questions = draft ? normalizeQuestionnaireDraft(draft) : normalizeQuestionnaire(user.questionnaire);
     builder.innerHTML = `
         <div class="section-heading compact">
             <div>
@@ -1929,7 +1968,7 @@ function renderQuestionnaireBuilder(user, builder = questionnaireBuilder) {
             </div>
             <span class="task-exp">${questions.length}/7</span>
         </div>
-        <p class="helper-text">Add up to 7 short questions. People can answer them after they connect with you for up to 50 XP.</p>
+        <p class="helper-text">Add up to 7 short questions. Unsaved drafts stay here while you think.</p>
         <div class="questionnaire-list" data-questionnaire-list>
             ${questions.map(renderQuestionnaireEditorRow).join('')}
         </div>
@@ -1979,6 +2018,7 @@ function handleQuestionnaireBuilderClick(event, builder = questionnaireBuilder) 
         if (addButton) {
             addButton.disabled = builder.querySelectorAll('[data-questionnaire-row]').length >= 7;
         }
+        saveCurrentQuestionnaireDraft(builder);
         return true;
     }
 
@@ -1989,6 +2029,7 @@ function handleQuestionnaireBuilderClick(event, builder = questionnaireBuilder) 
         if (addButton) {
             addButton.disabled = false;
         }
+        saveCurrentQuestionnaireDraft(builder);
         return true;
     }
 
@@ -1999,12 +2040,14 @@ function handleQuestionnaireBuilderClick(event, builder = questionnaireBuilder) 
         }
 
         const savedUser = saveUserQuestionnaire(user.email, readQuestionnaireBuilderRows(builder));
+        clearQuestionnaireDraft(user.email);
+        renderQuestionnaireBuilder(getCurrentUser(), builder);
+        const updatedMessage = builder.querySelector('[data-questionnaire-message]');
         if (message) {
             const count = savedUser?.questionnaire.length || 0;
-            message.textContent = `Saved ${count} question${count === 1 ? '' : 's'}.`;
-            message.classList.add('success-message');
+            (updatedMessage || message).textContent = `Saved ${count} question${count === 1 ? '' : 's'}.`;
+            (updatedMessage || message).classList.add('success-message');
         }
-        renderQuestionnaireBuilder(getCurrentUser(), builder);
         return true;
     }
 
@@ -3423,11 +3466,19 @@ if (questionnaireBuilder) {
     questionnaireBuilder.addEventListener('click', (event) => {
         handleQuestionnaireBuilderClick(event, questionnaireBuilder);
     });
+
+    questionnaireBuilder.addEventListener('input', () => {
+        saveCurrentQuestionnaireDraft(questionnaireBuilder);
+    });
 }
 
 if (gameQuestionnaireBuilder) {
     gameQuestionnaireBuilder.addEventListener('click', (event) => {
         handleQuestionnaireBuilderClick(event, gameQuestionnaireBuilder);
+    });
+
+    gameQuestionnaireBuilder.addEventListener('input', () => {
+        saveCurrentQuestionnaireDraft(gameQuestionnaireBuilder);
     });
 }
 

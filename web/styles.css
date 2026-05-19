@@ -373,8 +373,8 @@ form {
 
 .event-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
+    gap: 22px;
+    min-width: 0;
 }
 
 .event-card {
@@ -396,6 +396,109 @@ form {
     margin: 0;
     color: var(--muted);
     line-height: 1.5;
+}
+
+.featured-event {
+    display: grid;
+    align-items: end;
+    min-height: 390px;
+    border-radius: 8px;
+    padding: 28px;
+    color: #ffffff;
+    background:
+        linear-gradient(90deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.54)),
+        #1f2933;
+    background-position: center;
+    background-size: cover;
+}
+
+.featured-event-copy {
+    display: grid;
+    gap: 14px;
+    max-width: 680px;
+}
+
+.featured-event h2 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 4rem);
+    line-height: 1;
+}
+
+.featured-event p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.86);
+    line-height: 1.55;
+}
+
+.featured-event .secondary-button {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.48);
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.event-row {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.event-row h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.event-row-track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(230px, 30%);
+    gap: 12px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+}
+
+.event-tile {
+    display: grid;
+    align-items: end;
+    min-height: 250px;
+    border-radius: 8px;
+    overflow: hidden;
+    color: #ffffff;
+    background:
+        linear-gradient(rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0.82)),
+        #24303f;
+    background-position: center;
+    background-size: cover;
+}
+
+.event-tile-content {
+    display: grid;
+    gap: 10px;
+    min-height: 100%;
+    align-content: end;
+    padding: 14px;
+}
+
+.event-tile h3,
+.event-tile p {
+    margin: 0;
+}
+
+.event-tile h3 {
+    font-size: 1.05rem;
+}
+
+.event-tile p {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.86rem;
+    line-height: 1.35;
+}
+
+.event-tile .secondary-button {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.14);
 }
 
 .event-meta {
@@ -746,6 +849,10 @@ form {
     .event-grid,
     .game-grid {
         grid-template-columns: 1fr;
+    }
+
+    .event-row-track {
+        grid-auto-columns: minmax(220px, 74%);
     }
 
     .create-panel {

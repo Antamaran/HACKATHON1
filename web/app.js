@@ -1436,6 +1436,113 @@ function renderEventCard(event) {
     `;
 }
 
+function renderEventTile(event) {
+    const registered = isRegistered(event.id);
+    const closed = isEventClosed(event);
+    const imageStyle = event.sourceImage
+        ? ` style="background-image: linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.72)), url('${escapeHtml(event.sourceImage)}')"`
+        : '';
+
+    return `
+        <article class="event-tile" id="event-${escapeHtml(event.id)}"${imageStyle}>
+            <div class="event-tile-content">
+                <div class="event-meta">
+                    <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
+                    ${isCatalogEvent(event) ? '<span class="pill catalog-source">Catalog</span>' : ''}
+                    ${closed ? '<span class="pill closed">Closed</span>' : ''}
+                </div>
+                <h3>${escapeHtml(event.name)}</h3>
+                <p>${escapeHtml(event.location || 'Location to be announced')}</p>
+                <p>${escapeHtml(formatEventDateTime(event))}</p>
+                <div class="event-actions">
+                    <button class="secondary-button" type="button" data-info="${escapeHtml(event.id)}">Info</button>
+                    <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}" ${closed ? 'disabled' : ''}>
+                        ${closed ? 'Closed' : (registered ? 'Registered' : 'Register')}
+                    </button>
+                </div>
+            </div>
+        </article>
+    `;
+}
+
+function renderFeaturedEvent(event) {
+    if (!event) {
+        return '';
+    }
+
+    const registered = isRegistered(event.id);
+    const closed = isEventClosed(event);
+    const imageStyle = event.sourceImage
+        ? ` style="background-image: linear-gradient(90deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.48), rgba(15, 23, 42, 0.16)), url('${escapeHtml(event.sourceImage)}')"`
+        : '';
+
+    return `
+        <section class="featured-event"${imageStyle}>
+            <div class="featured-event-copy">
+                <div class="event-meta">
+                    <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
+                    ${isCatalogEvent(event) ? '<span class="pill catalog-source">Catalog</span>' : ''}
+                    ${closed ? '<span class="pill closed">Closed</span>' : ''}
+                </div>
+                <h2>${escapeHtml(event.name)}</h2>
+                <p>${escapeHtml(event.description)}</p>
+                <p>${escapeHtml(formatEventDateTime(event))} · ${escapeHtml(event.location || 'Location to be announced')}</p>
+                <div class="event-actions">
+                    <button type="button" data-register="${escapeHtml(event.id)}" class="${registered ? 'registered' : ''}" ${closed ? 'disabled' : ''}>
+                        ${closed ? 'Closed' : (registered ? 'Registered' : 'Register')}
+                    </button>
+                    <button class="secondary-button" type="button" data-info="${escapeHtml(event.id)}">Info</button>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function renderEventRow(title, events) {
+    if (!events.length) {
+        return '';
+    }
+
+    return `
+        <section class="event-row">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="event-row-track">
+                ${events.map(renderEventTile).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function renderEventDiscovery(events, user) {
+    if (!events.length) {
+        return '<p class="empty-state">No events match your search.</p>';
+    }
+
+    const searching = Boolean(activeEventSearch || activeSourceFilter !== 'all' || activeFilter !== 'all' || activeFromFilter || activeToFilter);
+    if (searching) {
+        return `
+            ${renderFeaturedEvent(events[0])}
+            ${renderEventRow('Search Results', events)}
+        `;
+    }
+
+    const featured = events.find(isCatalogEvent) || events[0];
+    const registeredEvents = user
+        ? events.filter((event) => isRegistered(event.id))
+        : [];
+    const catalogEvents = events.filter(isCatalogEvent);
+    const manualEvents = events.filter((event) => !isCatalogEvent(event));
+    const upcomingEvents = events.slice(0, 12);
+
+    return `
+        ${renderFeaturedEvent(featured)}
+        ${renderEventRow('Continue Your Events', registeredEvents)}
+        ${renderEventRow('Coming Up Soon', upcomingEvents)}
+        ${renderEventRow('Public Catalog', catalogEvents)}
+        ${renderEventRow('Organizer Picks', manualEvents)}
+    `;
+}
+
 function matchesEventSearch(event) {
     const query = activeEventSearch.trim().toLowerCase();
     if (!query) {
@@ -1512,7 +1619,7 @@ function renderDashboard() {
     userCount.textContent = String(users.length);
     userExp.textContent = String(user?.exp || 0);
     userLevel.textContent = String(user ? getLevel(user.exp) : 1);
-    eventGrid.innerHTML = `${renderInviteNotice(user)}${visibleEvents.length ? visibleEvents.map(renderEventCard).join('') : '<p class="empty-state">No events match your search.</p>'}`;
+    eventGrid.innerHTML = `${renderInviteNotice(user)}${renderEventDiscovery(visibleEvents, user)}`;
     renderProfile(user);
 }
 

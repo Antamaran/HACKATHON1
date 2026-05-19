@@ -179,6 +179,15 @@ form {
     color: var(--accent-strong);
 }
 
+.event-link-panel {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px;
+    background: #ecfdf8;
+}
+
 .invite-notice {
     margin-bottom: 16px;
     border: 1px solid var(--accent);

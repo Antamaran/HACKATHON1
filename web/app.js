@@ -136,6 +136,9 @@ const usernameInput = document.querySelector('#usernameInput');
 const demoCodeBox = document.querySelector('#demoCodeBox');
 const cancelVerificationButton = document.querySelector('#cancelVerificationButton');
 const eventMessage = document.querySelector('#eventMessage');
+const createdEventLinkPanel = document.querySelector('#createdEventLinkPanel');
+const createdEventLinkInput = document.querySelector('#createdEventLinkInput');
+const copyCreatedEventLinkButton = document.querySelector('#copyCreatedEventLinkButton');
 const logoutButton = document.querySelector('#logoutButton');
 const filterButtons = document.querySelectorAll('.filter-button');
 const totalEvents = document.querySelector('#totalEvents');
@@ -1425,6 +1428,25 @@ async function copyConnectionLink() {
     }, 1800);
 }
 
+async function copyCreatedEventLink() {
+    if (!createdEventLinkInput?.value || !copyCreatedEventLinkButton) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(createdEventLinkInput.value);
+        copyCreatedEventLinkButton.textContent = 'Copied';
+    } catch {
+        createdEventLinkInput.select();
+        document.execCommand('copy');
+        copyCreatedEventLinkButton.textContent = 'Copied';
+    }
+
+    setTimeout(() => {
+        copyCreatedEventLinkButton.textContent = 'Copy event link';
+    }, 1800);
+}
+
 function renderNotifications(user) {
     if (!notificationList) {
         return;
@@ -2293,6 +2315,7 @@ draftTaskList.addEventListener('click', (event) => {
 eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     await refreshSharedState();
+    createdEventLinkPanel?.classList.add('hidden');
 
     const user = getCurrentUser();
     const name = document.querySelector('#eventNameInput').value.trim();
@@ -2337,6 +2360,7 @@ eventForm.addEventListener('submit', async (event) => {
     };
 
     events.push(newEvent);
+    const eventLink = makeEventGameLink(newEvent.id);
 
     saveEvents(events);
     eventForm.reset();
@@ -2344,6 +2368,10 @@ eventForm.addEventListener('submit', async (event) => {
     renderDraftTasks();
     eventMessage.classList.add('success-message');
     eventMessage.textContent = 'Event created.';
+    if (createdEventLinkInput) {
+        createdEventLinkInput.value = eventLink;
+    }
+    createdEventLinkPanel?.classList.remove('hidden');
     renderDashboard();
 
     if (inviteEmails.length) {
@@ -2438,6 +2466,10 @@ if (eventGameView) {
 
 if (copyQrLinkButton) {
     copyQrLinkButton.addEventListener('click', copyConnectionLink);
+}
+
+if (copyCreatedEventLinkButton) {
+    copyCreatedEventLinkButton.addEventListener('click', copyCreatedEventLink);
 }
 
 if (connectionUrlForm) {

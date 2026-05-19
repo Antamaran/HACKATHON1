@@ -199,6 +199,5 @@ export default async (request) => {
 };
 
 export const config = {
-  path: '/.netlify/functions/catalog-sync',
   schedule: '0 */6 * * *'
 };

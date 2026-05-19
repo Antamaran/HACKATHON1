@@ -3408,7 +3408,14 @@ if (connectFlow) {
                 : 'You already answered this questionnaire.';
             result.classList.toggle('success-message', Boolean(attempt));
         }
-        renderDashboard();
+        if (attempt) {
+            const updatedUser = findUserByEmail(user.email);
+            if (updatedUser) {
+                userExp.textContent = String(updatedUser.exp || 0);
+                userLevel.textContent = String(getLevel(updatedUser.exp || 0));
+            }
+            form.querySelector('button[type="submit"]')?.setAttribute('disabled', '');
+        }
     });
 }
 
@@ -3472,15 +3479,17 @@ if (eventGameView) {
         const attempt = gradeQuestionnaire(targetUser, user.email, answers, eventId);
         const targetEvent = getEventById(eventId);
         const participant = getCurrentEventParticipant(eventId);
-        if (targetEvent && participant) {
-            renderEventGameDashboard(targetEvent, participant);
-        }
         const result = form.querySelector('[data-questionnaire-result]');
         if (result) {
             result.textContent = attempt
                 ? `You got ${attempt.correct}/${attempt.total} correct and earned ${attempt.xpAwarded} XP.`
                 : 'You already answered this questionnaire.';
             result.classList.toggle('success-message', Boolean(attempt));
+        }
+        if (attempt && targetEvent && participant) {
+            gameUserXp.textContent = String(getEventScore(targetEvent, participant.userEmail));
+            gameUserLevel.textContent = String(getLevel(getEventScore(targetEvent, participant.userEmail)));
+            form.querySelector('button[type="submit"]')?.setAttribute('disabled', '');
         }
     });
 }

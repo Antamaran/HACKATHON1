@@ -143,11 +143,11 @@ async function fetchTicketmasterPage(apiKey, page, startDate, endDate) {
 }
 
 export default async (request) => {
-  if (request.method === 'OPTIONS') {
+  if (request?.method === 'OPTIONS') {
     return response(200, { ok: true });
   }
 
-  if (request.method !== 'GET' && request.method !== 'POST') {
+  if (request?.method && request.method !== 'GET' && request.method !== 'POST') {
     return response(405, { error: 'Method not allowed' });
   }
 
@@ -189,5 +189,6 @@ export default async (request) => {
 };
 
 export const config = {
-  path: '/.netlify/functions/catalog-sync'
+  path: '/.netlify/functions/catalog-sync',
+  schedule: '0 */6 * * *'
 };

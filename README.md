@@ -168,11 +168,12 @@ CATALOG_SEGMENT=Music
 CATALOG_SYNC_PAGES=3
 ```
 
-After redeploying, the frontend calls the sync function on app load and adds
-events happening within the next 3 months into the global shared event list. The
-events are owned by `CATALOG_ADMIN_EMAIL` and include starter tasks. Organizers
-can also click **Sync public events** in the event browser to refresh the global
-catalog manually.
+After redeploying, Netlify runs the catalog sync every 6 hours and adds events
+happening within the next 3 months into the global shared event list before
+visitors arrive. The frontend also calls the sync function on app load, and
+organizers can click **Sync public events** in the event browser to refresh the
+global catalog manually. The events are owned by `CATALOG_ADMIN_EMAIL` and
+include starter tasks.
 
 ### Shared Data
 

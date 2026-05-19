@@ -146,6 +146,22 @@ The app sends:
 If email is not configured, signup falls back to showing a temporary local code
 so development does not get blocked.
 
+### Public Event Catalog
+
+Organizers can search a public event catalog and import concerts or other live
+events into Event Connect. The catalog uses the Ticketmaster Discovery API from
+the Netlify Function in `netlify/functions/event-catalog.mjs`.
+
+Add this Netlify environment variable:
+
+```text
+TICKETMASTER_API_KEY=your_ticketmaster_discovery_api_key
+```
+
+After redeploying, organizers can search by keyword, city, country, and date
+range, then click **Create game** to add the result as a normal Event Connect
+event with starter tasks.
+
 ### Shared Data
 
 Important: event/user data is still stored in each visitor's browser with

@@ -541,6 +541,57 @@ form {
     font-size: 0.9rem;
 }
 
+.catalog-panel {
+    display: grid;
+    gap: 14px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 20px;
+}
+
+.catalog-results {
+    display: grid;
+    gap: 10px;
+}
+
+.catalog-card {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #ffffff;
+}
+
+.catalog-card img {
+    width: 74px;
+    height: 74px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #eef2f5;
+}
+
+.catalog-card div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.catalog-card span,
+.catalog-card a {
+    color: var(--muted);
+    font-size: 0.84rem;
+    overflow-wrap: anywhere;
+}
+
+.catalog-card a {
+    color: var(--accent-strong);
+}
+
+.catalog-card button {
+    grid-column: 1 / -1;
+}
+
 .event-actions {
     display: flex;
     align-items: center;

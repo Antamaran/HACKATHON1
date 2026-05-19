@@ -70,13 +70,50 @@ function mergeEvents(existing, incoming) {
 }
 
 function mergeRegistrations(existing, incoming) {
-  const merged = { ...(existing || {}) };
+  const merged = {};
+  const eventIds = uniqueArray([
+    ...Object.keys(existing || {}),
+    ...Object.keys(incoming || {})
+  ]);
 
-  Object.entries(incoming || {}).forEach(([eventId, emails]) => {
-    merged[eventId] = uniqueArray([...(merged[eventId] || []), ...(emails || [])]);
+  eventIds.forEach((eventId) => {
+    const byEmail = new Map();
+
+    [...normalizeRegistrationRecords(existing?.[eventId]), ...normalizeRegistrationRecords(incoming?.[eventId])]
+      .forEach((record) => {
+        const current = byEmail.get(record.email);
+        const currentTime = Date.parse(current?.updatedAt || 0) || 0;
+        const recordTime = Date.parse(record.updatedAt || 0) || 0;
+
+        if (!current || recordTime >= currentTime) {
+          byEmail.set(record.email, record);
+        }
+      });
+
+    merged[eventId] = Array.from(byEmail.values());
   });
 
   return merged;
+}
+
+function normalizeRegistrationRecords(value) {
+  return (value || [])
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          email: item.trim().toLowerCase(),
+          status: 'registered',
+          updatedAt: ''
+        };
+      }
+
+      return {
+        email: item.email ? String(item.email).trim().toLowerCase() : '',
+        status: item.status === 'unregistered' ? 'unregistered' : 'registered',
+        updatedAt: item.updatedAt || ''
+      };
+    })
+    .filter((record) => record.email);
 }
 
 function mergeTaskCompletions(existing, incoming) {

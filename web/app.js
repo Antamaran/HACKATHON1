@@ -264,10 +264,28 @@ function mergeEvents(existing, incoming) {
 }
 
 function mergeRegistrations(existing, incoming) {
-    const merged = { ...(existing || {}) };
-    Object.entries(incoming || {}).forEach(([eventId, emails]) => {
-        merged[eventId] = uniqueValues([...(merged[eventId] || []), ...(emails || [])]);
+    const merged = {};
+    const eventIds = uniqueValues([
+        ...Object.keys(existing || {}),
+        ...Object.keys(incoming || {})
+    ]);
+
+    eventIds.forEach((eventId) => {
+        const byEmail = new Map();
+        [...normalizeRegistrationRecords(existing?.[eventId]), ...normalizeRegistrationRecords(incoming?.[eventId])]
+            .forEach((record) => {
+                const current = byEmail.get(record.email);
+                const currentTime = Date.parse(current?.updatedAt || 0) || 0;
+                const recordTime = Date.parse(record.updatedAt || 0) || 0;
+
+                if (!current || recordTime >= currentTime) {
+                    byEmail.set(record.email, record);
+                }
+            });
+
+        merged[eventId] = Array.from(byEmail.values());
     });
+
     return merged;
 }
 
@@ -820,6 +838,32 @@ function parseInterests(value) {
         .filter(Boolean);
 }
 
+function normalizeRegistrationRecords(value) {
+    return (value || [])
+        .map((item) => {
+            if (typeof item === 'string') {
+                return {
+                    email: normalizeEmail(item),
+                    status: 'registered',
+                    updatedAt: ''
+                };
+            }
+
+            return {
+                email: item.email ? normalizeEmail(item.email) : '',
+                status: item.status === 'unregistered' ? 'unregistered' : 'registered',
+                updatedAt: item.updatedAt || ''
+            };
+        })
+        .filter((record) => record.email);
+}
+
+function getRegisteredEmails(eventId) {
+    return normalizeRegistrationRecords(getRegistrations()[eventId])
+        .filter((record) => record.status === 'registered')
+        .map((record) => record.email);
+}
+
 function getCurrentUser() {
     const user = readStore(STORAGE_KEYS.currentUser, null);
     if (!user) {
@@ -1173,7 +1217,7 @@ function processEventRewards() {
             return;
         }
 
-        const registeredEmails = registrations[event.id] || [];
+        const registeredEmails = getRegisteredEmails(event.id);
         registeredEmails.forEach((email) => {
             const eventXp = getApprovedTaskScore(event, email);
             if (eventXp <= 0) {
@@ -1317,12 +1361,27 @@ function getParticipantById(eventId, participantId) {
 
 function ensureEventRegistration(eventId, userEmail) {
     const registrations = getRegistrations();
-    const eventUsers = registrations[eventId] || [];
+    const records = normalizeRegistrationRecords(registrations[eventId]);
+    const email = normalizeEmail(userEmail);
+    const existingIndex = records.findIndex((record) => record.email === email);
+    const registration = {
+        email,
+        status: 'registered',
+        updatedAt: new Date().toISOString()
+    };
 
-    if (!eventUsers.includes(userEmail)) {
-        registrations[eventId] = [...eventUsers, userEmail];
-        writeStore(STORAGE_KEYS.registrations, registrations);
+    if (existingIndex >= 0) {
+        if (records[existingIndex].status === 'registered') {
+            return;
+        }
+
+        records[existingIndex] = registration;
+    } else {
+        records.push(registration);
     }
+
+    registrations[eventId] = records;
+    writeStore(STORAGE_KEYS.registrations, registrations);
 }
 
 function joinEventWithCurrentUser(eventId) {
@@ -1438,8 +1497,7 @@ function createTaskId(name, index) {
 
 function isRegistered(eventId) {
     const user = getCurrentUser();
-    const registrations = getRegistrations();
-    return Boolean(user && registrations[eventId]?.includes(user.email));
+    return Boolean(user && getRegisteredEmails(eventId).includes(user.email));
 }
 
 function toggleRegistration(eventId) {
@@ -1454,15 +1512,23 @@ function toggleRegistration(eventId) {
     }
 
     const registrations = getRegistrations();
-    const eventUsers = registrations[eventId] || [];
+    const records = normalizeRegistrationRecords(registrations[eventId]);
+    const existingIndex = records.findIndex((record) => record.email === user.email);
+    const registered = existingIndex >= 0 && records[existingIndex].status === 'registered';
+    const nextRecord = {
+        email: user.email,
+        status: registered ? 'unregistered' : 'registered',
+        updatedAt: new Date().toISOString()
+    };
 
     // Clicking the same event again unregisters the current user.
-    if (eventUsers.includes(user.email)) {
-        registrations[eventId] = eventUsers.filter((email) => email !== user.email);
+    if (existingIndex >= 0) {
+        records[existingIndex] = nextRecord;
     } else {
-        registrations[eventId] = [...eventUsers, user.email];
+        records.push(nextRecord);
     }
 
+    registrations[eventId] = records;
     writeStore(STORAGE_KEYS.registrations, registrations);
     renderDashboard();
 }
@@ -1647,7 +1713,7 @@ function renderDashboard() {
     const events = getEvents();
     const users = getUsers();
     const registrations = getRegistrations();
-    const registeredEventIds = events.filter((event) => registrations[event.id]?.includes(user?.email)).length;
+    const registeredEventIds = events.filter((event) => user && getRegisteredEmails(event.id).includes(user.email)).length;
     let visibleEvents = events
         .filter((event) => activeFilter === 'all' || event.type === activeFilter)
         .filter(matchesEventSearch)
@@ -2078,8 +2144,7 @@ function renderPendingApprovals(event) {
 }
 
 function renderLeaderboard(event) {
-    const registrations = getRegistrations();
-    const registeredEmails = registrations[event.id] || [];
+    const registeredEmails = getRegisteredEmails(event.id);
     const participants = getEventParticipants().filter((participant) => participant.eventId === event.id);
     const users = getUsers()
         .filter((user) => registeredEmails.includes(user.email))
@@ -2309,9 +2374,11 @@ function saveGuestProgressToAccount(realEmail) {
 
     const registrations = getRegistrations();
     Object.keys(registrations).forEach((eventId) => {
-        registrations[eventId] = Array.from(new Set(registrations[eventId].map((email) => (
-            email === pending.guestEmail ? realEmail : email
-        ))));
+        registrations[eventId] = normalizeRegistrationRecords(registrations[eventId]).map((record) => (
+            record.email === pending.guestEmail
+                ? { ...record, email: realEmail, updatedAt: new Date().toISOString() }
+                : record
+        ));
     });
     writeStore(STORAGE_KEYS.registrations, registrations);
 

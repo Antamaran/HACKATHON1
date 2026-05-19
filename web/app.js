@@ -216,6 +216,25 @@ function mergeArraysByField(existing, incoming, field) {
     return Array.from(items.values());
 }
 
+function mergeEvents(existing, incoming) {
+    const events = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((event) => {
+        if (!event?.id) {
+            return;
+        }
+
+        const current = events.get(event.id) || {};
+        events.set(event.id, {
+            ...current,
+            ...event,
+            closedAt: current.closedAt || event.closedAt || '',
+            closedBy: current.closedBy || event.closedBy || ''
+        });
+    });
+
+    return Array.from(events.values());
+}
+
 function mergeRegistrations(existing, incoming) {
     const merged = { ...(existing || {}) };
     Object.entries(incoming || {}).forEach(([eventId, emails]) => {
@@ -285,7 +304,7 @@ function mergeTaskCompletions(existing, incoming) {
 
 function mergeSharedValue(key, existing, incoming) {
     if (key === STORAGE_KEYS.events) {
-        return mergeArraysByField(existing, incoming, 'id');
+        return mergeEvents(existing, incoming);
     }
 
     if (key === STORAGE_KEYS.users) {
@@ -725,6 +744,8 @@ function normalizeEvent(event) {
         inviteEmails: event.inviteEmails || [],
         organizerEmail: event.organizerEmail || '',
         managerEmails: (event.managerEmails || []).map(normalizeEmail),
+        closedAt: event.closedAt || '',
+        closedBy: event.closedBy || '',
         startTime: event.startTime || '09:00',
         endTime: event.endTime || '17:00',
         tasks: (event.tasks || []).map(normalizeTask)
@@ -1231,6 +1252,11 @@ function toggleRegistration(eventId) {
         return;
     }
 
+    const event = getEventById(eventId);
+    if (event && isEventClosed(event)) {
+        return;
+    }
+
     const registrations = getRegistrations();
     const eventUsers = registrations[eventId] || [];
 
@@ -1249,12 +1275,14 @@ function renderEventCard(event) {
     const registered = isRegistered(event.id);
     const locationText = event.location ? event.location : 'No location yet';
     const isInvitedEvent = activeInvite?.eventId === event.id;
+    const closed = isEventClosed(event);
 
     return `
         <article class="event-card ${isInvitedEvent ? 'invited-event' : ''}" id="event-${escapeHtml(event.id)}">
             <div class="event-meta">
                 <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
                 <span class="pill">${escapeHtml(formatEventDateTime(event))}</span>
+                ${closed ? '<span class="pill closed">Closed</span>' : ''}
             </div>
             <h3>${escapeHtml(event.name)}</h3>
             <p>${escapeHtml(event.description)}</p>
@@ -1262,8 +1290,8 @@ function renderEventCard(event) {
             ${event.tasks.length ? `<p>${event.tasks.length} task${event.tasks.length === 1 ? '' : 's'} available</p>` : ''}
             <div class="event-actions">
                 <button class="secondary-button" type="button" data-info="${escapeHtml(event.id)}">Info</button>
-                <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}">
-                    ${registered ? 'Registered' : 'Register'}
+                <button type="button" class="${registered ? 'registered' : ''}" data-register="${escapeHtml(event.id)}" ${closed ? 'disabled' : ''}>
+                    ${closed ? 'Closed' : (registered ? 'Registered' : 'Register')}
                 </button>
             </div>
         </article>
@@ -1508,6 +1536,11 @@ function renderTaskList(event, user) {
 }
 
 function renderTaskAction(eventId, task, status, registered) {
+    const event = getEventById(eventId);
+    if (event && isEventClosed(event)) {
+        return '<span class="task-status">Event closed</span>';
+    }
+
     if (status === 'approved') {
         return '<span class="task-status">XP awarded</span>';
     }
@@ -1588,6 +1621,7 @@ function normalizeParticipant(participant) {
 
 function renderManagers(event) {
     const managerItems = event.managerEmails.map((email) => `<li>${escapeHtml(email)}</li>`).join('');
+    const closed = isEventClosed(event);
 
     return `
         <ul class="manager-list">
@@ -1601,6 +1635,12 @@ function renderManagers(event) {
             </label>
             <button type="submit">Add manager</button>
         </form>
+        <div class="event-close-box">
+            <p>${closed ? `Closed ${escapeHtml(new Date(event.closedAt).toLocaleString())}` : 'Close this event when the game is finished.'}</p>
+            <button class="secondary-button" type="button" data-close-event="${escapeHtml(event.id)}" ${closed ? 'disabled' : ''}>
+                ${closed ? 'Event closed' : 'Close event'}
+            </button>
+        </div>
     `;
 }
 
@@ -1659,6 +1699,10 @@ function isEventFinished(event) {
     return new Date() > makeLocalDateTime(event.endDate, event.endTime);
 }
 
+function isEventClosed(event) {
+    return Boolean(event.closedAt);
+}
+
 function showEventLanding(event) {
     if (!eventLandingView) {
         return;
@@ -1672,20 +1716,38 @@ function showEventLanding(event) {
 
     const locationText = event.location ? event.location : 'Location to be announced';
     const connectTarget = getConnectTargetFromUrl();
+    const closed = isEventClosed(event);
     eventLandingTitle.textContent = event.name;
     eventLandingDescription.textContent = event.description || '';
     eventLandingMeta.innerHTML = `
         <span class="pill ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span>
         <span class="pill">${escapeHtml(formatEventDateTime(event))}</span>
         <span class="pill">${escapeHtml(locationText)}</span>
+        ${closed ? '<span class="pill closed">Closed</span>' : ''}
     `;
-    eventLandingMessage.textContent = connectTarget
+    eventLandingMessage.textContent = closed
+        ? 'This event has been closed by the organizer.'
+        : connectTarget
         ? 'Join this event first, then you can connect with the person from the QR code.'
         : '';
+    if (joinEventButton) {
+        joinEventButton.disabled = closed;
+        joinEventButton.textContent = closed ? 'EVENT CLOSED' : 'JOIN EVENT';
+    }
 }
 
 function renderEventConnectFlow(event, participant) {
     if (!gameConnectFlow) {
+        return;
+    }
+
+    if (isEventClosed(event)) {
+        gameConnectFlow.classList.remove('hidden');
+        gameConnectFlow.innerHTML = `
+            <p class="eyebrow">Event closed</p>
+            <h3>This event is no longer accepting new connections</h3>
+            <p class="helper-text">You can still see your XP, connections, and leaderboard.</p>
+        `;
         return;
     }
 
@@ -1889,6 +1951,9 @@ function openEventDialog(eventId) {
     const locationText = event.location ? event.location : 'No location yet';
     const organizerText = event.organizerEmail ? event.organizerEmail : 'Starter event';
     const manager = isEventManager(event, user);
+    const closedText = isEventClosed(event)
+        ? `Closed ${new Date(event.closedAt).toLocaleString()}`
+        : 'Open';
     const managerSections = manager
         ? `
             <section class="dialog-section">
@@ -1920,6 +1985,7 @@ function openEventDialog(eventId) {
             ${user ? `<p>Your account level: ${escapeHtml(getLevel(user.exp))} (${escapeHtml(user.exp)} / ${escapeHtml(getNextLevelExp(user.exp))} XP)</p>` : ''}
             <p>${escapeHtml(locationText)}</p>
             <p>Organizer: ${escapeHtml(organizerText)}</p>
+            <p>Status: ${escapeHtml(closedText)}</p>
         </section>
         <section class="dialog-section">
             <h3>Leaderboard</h3>
@@ -1968,9 +2034,34 @@ function addEventManager(eventId, rawEmail) {
     renderDashboard();
 }
 
+function closeEvent(eventId) {
+    const events = getEvents();
+    const eventIndex = events.findIndex((event) => event.id === eventId);
+    const user = getCurrentUser();
+
+    if (eventIndex < 0 || !isEventManager(events[eventIndex], user) || isEventClosed(events[eventIndex])) {
+        return;
+    }
+
+    events[eventIndex] = {
+        ...events[eventIndex],
+        closedAt: new Date().toISOString(),
+        closedBy: user.email
+    };
+
+    saveEvents(events);
+    openEventDialog(eventId);
+    renderDashboard();
+}
+
 function requestTaskCompletion(eventId, taskId) {
     const user = getCurrentUser();
     if (!user) {
+        return;
+    }
+
+    const event = getEventById(eventId);
+    if (event && isEventClosed(event)) {
         return;
     }
 
@@ -2086,6 +2177,12 @@ function showView() {
         const existingParticipant = getCurrentEventParticipant(eventId);
         const shouldJoinWithAccount = user && !user.isGuest && readSession(SESSION_KEYS.pendingAccountEventJoin, '') === eventId;
 
+        if (shouldJoinWithAccount && isEventClosed(event)) {
+            sessionStorage.removeItem(SESSION_KEYS.pendingAccountEventJoin);
+            showEventLanding(event);
+            return;
+        }
+
         if (shouldJoinWithAccount) {
             sessionStorage.removeItem(SESSION_KEYS.pendingAccountEventJoin);
             const participant = joinEventWithCurrentUser(eventId);
@@ -2128,6 +2225,12 @@ function showView() {
 
 if (joinEventButton) {
     joinEventButton.addEventListener('click', () => {
+        const event = getEventById(getEventIdFromUrl());
+        if (event && isEventClosed(event)) {
+            eventLandingMessage.textContent = 'This event has been closed by the organizer.';
+            return;
+        }
+
         guestJoinForm?.classList.remove('hidden');
         guestJoinMessage.textContent = '';
         document.querySelector('#guestDisplayNameInput')?.focus();
@@ -2178,6 +2281,11 @@ if (guestJoinForm) {
 
         if (!targetEvent || !displayName || !role) {
             guestJoinMessage.textContent = 'Add a display name and role to join.';
+            return;
+        }
+
+        if (isEventClosed(targetEvent)) {
+            guestJoinMessage.textContent = 'This event has been closed by the organizer.';
             return;
         }
 
@@ -2555,6 +2663,12 @@ if (eventDialog) {
                 approveButton.dataset.taskId,
                 approveButton.dataset.userEmail
             );
+            return;
+        }
+
+        const closeEventButton = event.target.closest('[data-close-event]');
+        if (closeEventButton) {
+            closeEvent(closeEventButton.dataset.closeEvent);
         }
     });
 

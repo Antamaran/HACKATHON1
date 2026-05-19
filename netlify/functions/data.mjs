@@ -43,6 +43,26 @@ function mergeArraysById(existing, incoming, idField) {
   return Array.from(items.values());
 }
 
+function mergeEvents(existing, incoming) {
+  const events = new Map();
+
+  [...(existing || []), ...(incoming || [])].forEach((event) => {
+    if (!event?.id) {
+      return;
+    }
+
+    const current = events.get(event.id) || {};
+    events.set(event.id, {
+      ...current,
+      ...event,
+      closedAt: current.closedAt || event.closedAt || '',
+      closedBy: current.closedBy || event.closedBy || ''
+    });
+  });
+
+  return Array.from(events.values());
+}
+
 function mergeRegistrations(existing, incoming) {
   const merged = { ...(existing || {}) };
 
@@ -119,7 +139,7 @@ function mergeUsers(existing, incoming) {
 
 function mergeValue(key, existing, incoming) {
   if (key === 'eventConnect.events') {
-    return mergeArraysById(existing, incoming, 'id');
+    return mergeEvents(existing, incoming);
   }
 
   if (key === 'eventConnect.users') {

@@ -114,6 +114,11 @@ const gameConnectionCount = document.querySelector('#gameConnectionCount');
 const gameConnectFlow = document.querySelector('#gameConnectFlow');
 const gameQrImage = document.querySelector('#gameQrImage');
 const gameQrLink = document.querySelector('#gameQrLink');
+const scanGameQrButton = document.querySelector('#scanGameQrButton');
+const gameQrScannerPanel = document.querySelector('#gameQrScannerPanel');
+const gameQrScannerVideo = document.querySelector('#gameQrScannerVideo');
+const stopGameQrScanButton = document.querySelector('#stopGameQrScanButton');
+const gameQrScanMessage = document.querySelector('#gameQrScanMessage');
 const gameTaskList = document.querySelector('#gameTaskList');
 const gameConnectionList = document.querySelector('#gameConnectionList');
 const gameLeaderboard = document.querySelector('#gameLeaderboard');
@@ -176,6 +181,7 @@ let qrScannerStream = null;
 let qrScanFrameId = null;
 let qrDetector = null;
 let qrScannerCanvas = null;
+let activeQrScanner = null;
 
 // Small wrappers around localStorage so the rest of the code can work with objects.
 function readStore(key, fallback) {
@@ -497,6 +503,24 @@ function parseConnectionUrl(value) {
     };
 }
 
+function parseEventConnectionUrl(value) {
+    let params;
+    try {
+        params = new URL(value).searchParams;
+    } catch {
+        params = new URLSearchParams(value.startsWith('?') ? value : `?${value}`);
+    }
+
+    const eventId = params.get('event') || '';
+    const participantId = params.get('connect') || '';
+
+    if (!eventId || !participantId) {
+        return null;
+    }
+
+    return { eventId, participantId };
+}
+
 function openPastedConnectionUrl(value) {
     const connection = parseConnectionUrl(value.trim());
 
@@ -510,9 +534,33 @@ function openPastedConnectionUrl(value) {
     renderDashboard();
 }
 
+function openScannedEventConnectionUrl(value) {
+    const scannedConnection = parseEventConnectionUrl(value.trim());
+    const eventId = getEventIdFromUrl();
+    const event = getEventById(eventId);
+    const participant = getCurrentEventParticipant(eventId);
+
+    if (!scannedConnection || !event || !participant || scannedConnection.eventId !== eventId) {
+        setGameQrScanMessage('Scan a valid QR code for this event.');
+        return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    params.set('connect', scannedConnection.participantId);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    setGameQrScanMessage('');
+    renderEventGameDashboard(event, participant);
+}
+
 function setConnectionUrlMessage(message) {
     if (connectionUrlMessage) {
         connectionUrlMessage.textContent = message;
+    }
+}
+
+function setGameQrScanMessage(message) {
+    if (gameQrScanMessage) {
+        gameQrScanMessage.textContent = message;
     }
 }
 
@@ -527,34 +575,33 @@ function stopQrScanner() {
         qrScannerStream = null;
     }
 
-    if (qrScannerVideo) {
-        qrScannerVideo.srcObject = null;
+    if (activeQrScanner?.video) {
+        activeQrScanner.video.srcObject = null;
     }
 
-    qrScannerPanel?.classList.add('hidden');
-    if (scanQrButton) {
-        scanQrButton.disabled = false;
+    activeQrScanner?.panel?.classList.add('hidden');
+    if (activeQrScanner?.button) {
+        activeQrScanner.button.disabled = false;
     }
+    activeQrScanner = null;
 }
 
 async function scanQrFrame() {
-    if (!qrScannerVideo || !qrScannerStream) {
+    if (!activeQrScanner?.video || !qrScannerStream) {
         return;
     }
 
     try {
-        const scannedValue = await detectQrValue(qrScannerVideo);
+        const scannedValue = await detectQrValue(activeQrScanner.video);
 
         if (scannedValue) {
+            const { onScan } = activeQrScanner;
             stopQrScanner();
-            if (connectionUrlInput) {
-                connectionUrlInput.value = scannedValue;
-            }
-            openPastedConnectionUrl(scannedValue);
+            onScan(scannedValue);
             return;
         }
     } catch {
-        setConnectionUrlMessage('Could not read the QR code yet. Keep it centered in the camera.');
+        activeQrScanner.setMessage('Could not read the QR code yet. Keep it centered in the camera.');
     }
 
     qrScanFrameId = requestAnimationFrame(scanQrFrame);
@@ -594,19 +641,20 @@ function createQrDetector() {
     }
 }
 
-async function startQrScanner() {
+async function startQrScannerSession(scanner) {
     if (!navigator.mediaDevices?.getUserMedia) {
-        setConnectionUrlMessage('Camera access is not available. Paste the connection URL instead.');
+        scanner.setMessage('Camera access is not available. Paste the connection URL instead.');
         return;
     }
 
     if (!('BarcodeDetector' in window) && !window.jsQR) {
-        setConnectionUrlMessage('QR scanning could not load. Check your connection, then try again.');
+        scanner.setMessage('QR scanning could not load. Check your connection, then try again.');
         return;
     }
 
     try {
         stopQrScanner();
+        activeQrScanner = scanner;
         qrDetector = createQrDetector();
         qrScannerStream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -615,16 +663,56 @@ async function startQrScanner() {
             audio: false
         });
 
-        qrScannerVideo.srcObject = qrScannerStream;
-        await qrScannerVideo.play();
-        qrScannerPanel?.classList.remove('hidden');
-        scanQrButton.disabled = true;
-        setConnectionUrlMessage('Point your camera at a connection QR code.');
+        scanner.video.srcObject = qrScannerStream;
+        await scanner.video.play();
+        scanner.panel?.classList.remove('hidden');
+        scanner.button.disabled = true;
+        scanner.setMessage(scanner.prompt);
         qrScanFrameId = requestAnimationFrame(scanQrFrame);
     } catch {
         stopQrScanner();
-        setConnectionUrlMessage('Camera access was blocked or unavailable. Paste the connection URL instead.');
+        scanner.setMessage('Camera access was blocked or unavailable. Paste the connection URL instead.');
     }
+}
+
+async function startQrScanner() {
+    await startQrScannerSession({
+        video: qrScannerVideo,
+        panel: qrScannerPanel,
+        button: scanQrButton,
+        setMessage: setConnectionUrlMessage,
+        prompt: 'Point your camera at a connection QR code.',
+        onScan: (scannedValue) => {
+            if (connectionUrlInput) {
+                connectionUrlInput.value = scannedValue;
+            }
+            openPastedConnectionUrl(scannedValue);
+        }
+    });
+}
+
+async function startEventQrScanner() {
+    const event = getEventById(getEventIdFromUrl());
+    const participant = getCurrentEventParticipant(getEventIdFromUrl());
+
+    if (!event || !participant) {
+        setGameQrScanMessage('Join this event before scanning QR codes.');
+        return;
+    }
+
+    if (isEventClosed(event)) {
+        setGameQrScanMessage('This event is closed, so new connections are disabled.');
+        return;
+    }
+
+    await startQrScannerSession({
+        video: gameQrScannerVideo,
+        panel: gameQrScannerPanel,
+        button: scanGameQrButton,
+        setMessage: setGameQrScanMessage,
+        prompt: 'Point your camera at another attendee event QR code.',
+        onScan: openScannedEventConnectionUrl
+    });
 }
 
 function makeInviteLink(eventId, email) {
@@ -1858,6 +1946,11 @@ function renderEventGameDashboard(event, participant) {
         gameQrLink.textContent = qrLink;
     }
 
+    if (scanGameQrButton) {
+        scanGameQrButton.disabled = isEventClosed(event);
+        scanGameQrButton.textContent = isEventClosed(event) ? 'Event closed' : 'Scan QR Code';
+    }
+
     if (user?.isGuest && user.email !== freshParticipant.userEmail) {
         writeStore(STORAGE_KEYS.currentUser, findUserByEmail(freshParticipant.userEmail) || user);
     }
@@ -2591,10 +2684,21 @@ if (scanQrButton) {
     scanQrButton.addEventListener('click', startQrScanner);
 }
 
+if (scanGameQrButton) {
+    scanGameQrButton.addEventListener('click', startEventQrScanner);
+}
+
 if (stopQrScanButton) {
     stopQrScanButton.addEventListener('click', () => {
         stopQrScanner();
         setConnectionUrlMessage('');
+    });
+}
+
+if (stopGameQrScanButton) {
+    stopGameQrScanButton.addEventListener('click', () => {
+        stopQrScanner();
+        setGameQrScanMessage('');
     });
 }
 

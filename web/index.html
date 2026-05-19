@@ -148,6 +148,12 @@
                     <div class="qr-card">
                         <img id="gameQrImage" alt="Your event connection QR code">
                         <a id="gameQrLink" href="#">Open event connection link</a>
+                        <button class="secondary-button" type="button" id="scanGameQrButton">Scan QR Code</button>
+                        <div class="qr-scanner hidden" id="gameQrScannerPanel">
+                            <video id="gameQrScannerVideo" playsinline muted></video>
+                            <button class="secondary-button" type="button" id="stopGameQrScanButton">Stop scanning</button>
+                        </div>
+                        <p class="form-message" id="gameQrScanMessage"></p>
                     </div>
                 </section>
 

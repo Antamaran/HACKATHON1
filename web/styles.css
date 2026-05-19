@@ -624,6 +624,28 @@ form {
     font-size: 0.9rem;
 }
 
+.event-edit-form {
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    background: #f8fafc;
+}
+
+.danger-section {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+}
+
+.danger-button {
+    background: var(--danger);
+}
+
+.danger-button:hover {
+    background: #8f1b12;
+}
+
 .catalog-panel {
     display: grid;
     gap: 14px;

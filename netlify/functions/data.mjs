@@ -52,11 +52,17 @@ function mergeEvents(existing, incoming) {
     }
 
     const current = events.get(event.id) || {};
+    const currentTime = Date.parse(current.updatedAt || current.createdAt || 0) || 0;
+    const eventTime = Date.parse(event.updatedAt || event.createdAt || 0) || 0;
+    const latest = eventTime >= currentTime ? event : current;
+    const earliest = eventTime >= currentTime ? current : event;
     events.set(event.id, {
-      ...current,
-      ...event,
+      ...earliest,
+      ...latest,
       closedAt: current.closedAt || event.closedAt || '',
-      closedBy: current.closedBy || event.closedBy || ''
+      closedBy: current.closedBy || event.closedBy || '',
+      deletedAt: current.deletedAt || event.deletedAt || '',
+      deletedBy: current.deletedBy || event.deletedBy || ''
     });
   });
 

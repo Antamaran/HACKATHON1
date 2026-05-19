@@ -43,6 +43,17 @@ https://starlit-haupia-07c2f5.netlify.app/web/?event=coffee-match&connect=PARTIC
 Scanning another attendee's QR joins the same event first, then allows a
 connection. Duplicate/self connections do not award repeat XP.
 
+Seeded admin account:
+
+```text
+Username: admin123
+Email: admin@adminemail.com
+Password: iamaadmin
+```
+
+Event organizers can edit and delete their own events from the event info
+dialog. The admin account can edit and delete any event.
+
 When creating an event, you can add invitee email addresses. The organizer can
 open the event details to see local invite links that open the site directly to
 that event so invitees can log in and register. Invite emails are hidden from

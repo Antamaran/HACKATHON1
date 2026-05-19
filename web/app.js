@@ -18,6 +18,11 @@ const API_BASE_URL = window.location.protocol.startsWith('http') && !LOCAL_HOSTN
     ? window.location.origin
     : NETLIFY_SITE_URL;
 const REMOTE_REFRESH_INTERVAL_MS = 10 * 1000;
+const ADMIN_ACCOUNT = {
+    username: 'admin123',
+    email: 'admin@adminemail.com',
+    password: 'iamaadmin'
+};
 const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.users,
     STORAGE_KEYS.events,
@@ -241,11 +246,17 @@ function mergeEvents(existing, incoming) {
         }
 
         const current = events.get(event.id) || {};
+        const currentTime = Date.parse(current.updatedAt || current.createdAt || 0) || 0;
+        const eventTime = Date.parse(event.updatedAt || event.createdAt || 0) || 0;
+        const latest = eventTime >= currentTime ? event : current;
+        const earliest = eventTime >= currentTime ? current : event;
         events.set(event.id, {
-            ...current,
-            ...event,
+            ...earliest,
+            ...latest,
             closedAt: current.closedAt || event.closedAt || '',
-            closedBy: current.closedBy || event.closedBy || ''
+            closedBy: current.closedBy || event.closedBy || '',
+            deletedAt: current.deletedAt || event.deletedAt || '',
+            deletedBy: current.deletedBy || event.deletedBy || ''
         });
     });
 
@@ -824,6 +835,10 @@ function getUsers() {
 }
 
 function getEvents() {
+    return readStore(STORAGE_KEYS.events, seedEvents).map(normalizeEvent).filter((event) => !event.deletedAt);
+}
+
+function getAllEvents() {
     return readStore(STORAGE_KEYS.events, seedEvents).map(normalizeEvent);
 }
 
@@ -879,6 +894,10 @@ function normalizeEvent(event) {
         managerEmails: (event.managerEmails || []).map(normalizeEmail),
         closedAt: event.closedAt || '',
         closedBy: event.closedBy || '',
+        deletedAt: event.deletedAt || '',
+        deletedBy: event.deletedBy || '',
+        createdAt: event.createdAt || '',
+        updatedAt: event.updatedAt || '',
         source: event.source || '',
         sourceId: event.sourceId || '',
         sourceUrl: event.sourceUrl || '',
@@ -1050,6 +1069,23 @@ function saveEvents(events) {
     writeStore(STORAGE_KEYS.events, events.map(normalizeEvent));
 }
 
+function updateEventInStore(eventId, updater) {
+    const events = getAllEvents();
+    const eventIndex = events.findIndex((event) => event.id === eventId);
+
+    if (eventIndex < 0) {
+        return null;
+    }
+
+    const updatedEvent = normalizeEvent({
+        ...updater(events[eventIndex]),
+        updatedAt: new Date().toISOString()
+    });
+    events[eventIndex] = updatedEvent;
+    saveEvents(events);
+    return updatedEvent;
+}
+
 function updateUserExp(email, expToAdd) {
     if (expToAdd <= 0) {
         return;
@@ -1194,6 +1230,29 @@ async function hashPassword(password) {
     }
 
     return `local:${password}`;
+}
+
+async function ensureAdminAccount() {
+    const passwordHash = await hashPassword(ADMIN_ACCOUNT.password);
+    const users = getUsers();
+    const existingIndex = users.findIndex((user) => user.email === ADMIN_ACCOUNT.email);
+    const adminUser = normalizeUser({
+        ...(existingIndex >= 0 ? users[existingIndex] : {}),
+        username: ADMIN_ACCOUNT.username,
+        email: ADMIN_ACCOUNT.email,
+        passwordHash,
+        exp: existingIndex >= 0 ? users[existingIndex].exp : 0,
+        connectedUsers: existingIndex >= 0 ? users[existingIndex].connectedUsers : [],
+        isGuest: false
+    });
+
+    if (existingIndex >= 0) {
+        users[existingIndex] = adminUser;
+    } else {
+        users.push(adminUser);
+    }
+
+    await writeStore(STORAGE_KEYS.users, users);
 }
 
 async function startEmailVerification(user) {
@@ -1783,7 +1842,19 @@ function renderNotifications(user) {
 }
 
 function isEventManager(event, user) {
-    return Boolean(user && (event.organizerEmail === user.email || event.managerEmails.includes(user.email)));
+    return Boolean(user && (isAdminUser(user) || event.organizerEmail === user.email || event.managerEmails.includes(user.email)));
+}
+
+function isAdminUser(user) {
+    return user?.email === ADMIN_ACCOUNT.email;
+}
+
+function canEditEvent(event, user) {
+    return Boolean(user && (isAdminUser(user) || event.organizerEmail === user.email));
+}
+
+function canDeleteEvent(event, user) {
+    return canEditEvent(event, user);
 }
 
 function getTaskStatus(eventId, taskId, userEmail) {
@@ -1929,6 +2000,57 @@ function renderManagers(event) {
                 ${closed ? 'Event closed' : 'Close event'}
             </button>
         </div>
+    `;
+}
+
+function renderEditEventForm(event) {
+    return `
+        <form class="event-edit-form" data-edit-event="${escapeHtml(event.id)}">
+            <label>
+                Event name
+                <input type="text" name="name" value="${escapeHtml(event.name)}" required>
+            </label>
+            <label>
+                Description
+                <textarea name="description" rows="4" required>${escapeHtml(event.description)}</textarea>
+            </label>
+            <div class="two-column">
+                <label>
+                    Start date
+                    <input type="date" name="startDate" value="${escapeHtml(event.startDate)}" required>
+                </label>
+                <label>
+                    Start time
+                    <input type="time" name="startTime" value="${escapeHtml(event.startTime)}" required>
+                </label>
+            </div>
+            <div class="two-column">
+                <label>
+                    End date
+                    <input type="date" name="endDate" value="${escapeHtml(event.endDate)}" required>
+                </label>
+                <label>
+                    End time
+                    <input type="time" name="endTime" value="${escapeHtml(event.endTime)}" required>
+                </label>
+            </div>
+            <label>
+                Location
+                <input type="text" name="location" value="${escapeHtml(event.location || '')}">
+            </label>
+            <label>
+                Type
+                <select name="type" required>
+                    <option value="professional" ${event.type === 'professional' ? 'selected' : ''}>Professional</option>
+                    <option value="leisure" ${event.type === 'leisure' ? 'selected' : ''}>Leisure</option>
+                </select>
+            </label>
+            <label>
+                Invite emails
+                <textarea name="inviteEmails" rows="3">${escapeHtml((event.inviteEmails || []).join(', '))}</textarea>
+            </label>
+            <button type="submit">Save changes</button>
+        </form>
     `;
 }
 
@@ -2244,6 +2366,8 @@ function openEventDialog(eventId) {
     const locationText = event.location ? event.location : 'No location yet';
     const organizerText = event.organizerEmail ? event.organizerEmail : 'Starter event';
     const manager = isEventManager(event, user);
+    const editable = canEditEvent(event, user);
+    const deletable = canDeleteEvent(event, user);
     const closedText = isEventClosed(event)
         ? `Closed ${new Date(event.closedAt).toLocaleString()}`
         : 'Open';
@@ -2260,6 +2384,23 @@ function openEventDialog(eventId) {
             <section class="dialog-section">
                 <h3>Pending task approvals</h3>
                 ${renderPendingApprovals(event)}
+            </section>
+        `
+        : '';
+    const ownerSections = editable
+        ? `
+            <section class="dialog-section">
+                <h3>Edit event</h3>
+                ${renderEditEventForm(event)}
+            </section>
+        `
+        : '';
+    const deleteSection = deletable
+        ? `
+            <section class="dialog-section danger-section">
+                <h3>Delete event</h3>
+                <p>This removes the event from the global catalog for everyone.</p>
+                <button class="danger-button" type="button" data-delete-event="${escapeHtml(event.id)}">Delete event</button>
             </section>
         `
         : '';
@@ -2288,7 +2429,9 @@ function openEventDialog(eventId) {
             <h3>Tasks</h3>
             ${renderTaskList(event, user)}
         </section>
+        ${ownerSections}
         ${managerSections}
+        ${deleteSection}
     `;
     if (!eventDialog.open) {
         eventDialog.showModal();
@@ -2324,6 +2467,67 @@ function addEventManager(eventId, rawEmail) {
 
     saveEvents(events);
     openEventDialog(eventId);
+    renderDashboard();
+}
+
+function editEvent(eventId, form) {
+    const event = getEventById(eventId);
+    const user = getCurrentUser();
+
+    if (!event || !canEditEvent(event, user)) {
+        return;
+    }
+
+    const inviteEmails = parseInviteEmails(form.elements.inviteEmails.value);
+    const updatedEvent = {
+        ...event,
+        name: form.elements.name.value.trim(),
+        description: form.elements.description.value.trim(),
+        startDate: form.elements.startDate.value,
+        startTime: form.elements.startTime.value,
+        endDate: form.elements.endDate.value,
+        endTime: form.elements.endTime.value,
+        location: form.elements.location.value.trim(),
+        type: form.elements.type.value,
+        inviteEmails
+    };
+
+    if (!updatedEvent.name || !updatedEvent.description) {
+        return;
+    }
+
+    if (makeLocalDateTime(updatedEvent.endDate, updatedEvent.endTime) <= makeLocalDateTime(updatedEvent.startDate, updatedEvent.startTime)) {
+        return;
+    }
+
+    updateEventInStore(eventId, () => updatedEvent);
+    openEventDialog(eventId);
+    renderDashboard();
+}
+
+function deleteEvent(eventId) {
+    const event = getEventById(eventId);
+    const user = getCurrentUser();
+
+    if (!event || !canDeleteEvent(event, user)) {
+        return;
+    }
+
+    const confirmed = window.confirm(`Delete ${event.name}? This removes it for everyone.`);
+    if (!confirmed) {
+        return;
+    }
+
+    updateEventInStore(eventId, (currentEvent) => ({
+        ...currentEvent,
+        deletedAt: new Date().toISOString(),
+        deletedBy: user.email
+    }));
+
+    if (eventDialog?.open) {
+        eventDialog.close();
+    }
+
     renderDashboard();
 }
 
@@ -2757,6 +2961,8 @@ eventForm.addEventListener('submit', async (event) => {
         inviteEmails,
         organizerEmail: user.email,
         managerEmails: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         tasks: draftTasks.map((task) => ({ ...task }))
     };
 
@@ -2973,10 +3179,23 @@ if (eventDialog) {
         const closeEventButton = event.target.closest('[data-close-event]');
         if (closeEventButton) {
             closeEvent(closeEventButton.dataset.closeEvent);
+            return;
+        }
+
+        const deleteEventButton = event.target.closest('[data-delete-event]');
+        if (deleteEventButton) {
+            deleteEvent(deleteEventButton.dataset.deleteEvent);
         }
     });
 
     eventDialog.addEventListener('submit', (event) => {
+        const editForm = event.target.closest('[data-edit-event]');
+        if (editForm) {
+            event.preventDefault();
+            editEvent(editForm.dataset.editEvent, editForm);
+            return;
+        }
+
         const managerForm = event.target.closest('[data-manager-form]');
         if (!managerForm) {
             return;
@@ -3027,6 +3246,7 @@ logoutButton.addEventListener('click', () => {
 async function initializeApp() {
     await syncCatalogEvents(false);
     await loadRemoteState();
+    await ensureAdminAccount();
 
     if (!localStorage.getItem(STORAGE_KEYS.events) || getEvents().length === 0) {
         await writeStore(STORAGE_KEYS.events, seedEvents);

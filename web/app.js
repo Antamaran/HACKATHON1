@@ -131,6 +131,14 @@ const dashboardView = document.querySelector('#dashboardView');
 const loginForm = document.querySelector('#loginForm');
 const verificationForm = document.querySelector('#verificationForm');
 const eventForm = document.querySelector('#eventForm');
+const catalogSearchForm = document.querySelector('#catalogSearchForm');
+const catalogKeywordInput = document.querySelector('#catalogKeywordInput');
+const catalogCityInput = document.querySelector('#catalogCityInput');
+const catalogCountryInput = document.querySelector('#catalogCountryInput');
+const catalogStartDateInput = document.querySelector('#catalogStartDateInput');
+const catalogEndDateInput = document.querySelector('#catalogEndDateInput');
+const catalogMessage = document.querySelector('#catalogMessage');
+const catalogResults = document.querySelector('#catalogResults');
 const eventGrid = document.querySelector('#eventGrid');
 const welcomeTitle = document.querySelector('#welcomeTitle');
 const loginMessage = document.querySelector('#loginMessage');
@@ -177,6 +185,7 @@ let activeFilter = 'all';
 let activeInvite = getInviteFromUrl();
 let activeConnection = getConnectionFromUrl();
 let draftTasks = [];
+let catalogEvents = [];
 let qrScannerStream = null;
 let qrScanFrameId = null;
 let qrDetector = null;
@@ -1328,6 +1337,19 @@ function createTaskId(name, index) {
     return `${slug || 'task'}-${index}`;
 }
 
+function createCatalogEventId(catalogEvent) {
+    const source = String(catalogEvent.source || 'catalog')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+    const sourceId = String(catalogEvent.sourceId || catalogEvent.name || Date.now())
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    return `${source || 'catalog'}-${sourceId || Date.now().toString(36)}`;
+}
+
 function isRegistered(eventId) {
     const user = getCurrentUser();
     const registrations = getRegistrations();
@@ -2475,6 +2497,163 @@ function renderDraftTasks() {
     `).join('');
 }
 
+function formatCatalogResultDate(catalogEvent) {
+    const date = catalogEvent.startDate || 'Date to be announced';
+    const time = catalogEvent.startTime || '';
+    return `${date}${time ? ` ${time}` : ''}`;
+}
+
+function renderCatalogResults() {
+    if (!catalogResults) {
+        return;
+    }
+
+    if (!catalogEvents.length) {
+        catalogResults.innerHTML = '<p class="empty-state">No catalog results yet.</p>';
+        return;
+    }
+
+    const existingEventIds = new Set(getEvents().map((event) => event.id));
+    catalogResults.innerHTML = catalogEvents.map((catalogEvent, index) => {
+        const eventId = createCatalogEventId(catalogEvent);
+        const alreadyImported = existingEventIds.has(eventId);
+
+        return `
+            <article class="catalog-card">
+                ${catalogEvent.image ? `<img src="${escapeHtml(catalogEvent.image)}" alt="">` : ''}
+                <div>
+                    <strong>${escapeHtml(catalogEvent.name)}</strong>
+                    <span>${escapeHtml(formatCatalogResultDate(catalogEvent))}</span>
+                    <span>${escapeHtml(catalogEvent.location || 'Location to be announced')}</span>
+                    ${catalogEvent.url ? `<a href="${escapeHtml(catalogEvent.url)}" target="_blank" rel="noreferrer">Source listing</a>` : ''}
+                </div>
+                <button class="secondary-button" type="button" data-import-catalog="${index}" ${alreadyImported ? 'disabled' : ''}>
+                    ${alreadyImported ? 'Imported' : 'Create game'}
+                </button>
+            </article>
+        `;
+    }).join('');
+}
+
+async function searchCatalogEvents() {
+    if (!catalogSearchForm || !catalogMessage) {
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('keyword', catalogKeywordInput.value.trim());
+
+    if (catalogCityInput.value.trim()) {
+        params.set('city', catalogCityInput.value.trim());
+    }
+
+    if (catalogCountryInput.value.trim()) {
+        params.set('countryCode', catalogCountryInput.value.trim().toUpperCase());
+    }
+
+    if (catalogStartDateInput.value) {
+        params.set('startDate', catalogStartDateInput.value);
+    }
+
+    if (catalogEndDateInput.value) {
+        params.set('endDate', catalogEndDateInput.value);
+    }
+
+    catalogMessage.textContent = 'Searching public events...';
+    catalogMessage.classList.remove('success-message');
+    catalogEvents = [];
+    renderCatalogResults();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/.netlify/functions/event-catalog?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Catalog search failed.');
+        }
+
+        catalogEvents = data.events || [];
+        catalogMessage.textContent = catalogEvents.length
+            ? `${catalogEvents.length} public event${catalogEvents.length === 1 ? '' : 's'} found.`
+            : 'No matching public events found.';
+        catalogMessage.classList.add('success-message');
+        renderCatalogResults();
+    } catch (error) {
+        catalogMessage.textContent = error.message;
+    }
+}
+
+function buildImportedEvent(catalogEvent, organizerEmail) {
+    const startDate = catalogEvent.startDate || new Date().toISOString().slice(0, 10);
+    const startTime = catalogEvent.startTime || '19:00';
+    const endDate = catalogEvent.endDate || startDate;
+    const endTime = catalogEvent.endTime || '22:00';
+
+    return normalizeEvent({
+        id: createCatalogEventId(catalogEvent),
+        name: catalogEvent.name,
+        description: catalogEvent.description || `Public event imported from ${catalogEvent.source || 'catalog'}.`,
+        startDate,
+        startTime,
+        endDate,
+        endTime,
+        location: catalogEvent.location || '',
+        type: 'leisure',
+        inviteEmails: [],
+        organizerEmail,
+        managerEmails: [],
+        source: catalogEvent.source || 'catalog',
+        sourceId: catalogEvent.sourceId || '',
+        sourceUrl: catalogEvent.url || '',
+        tasks: [
+            {
+                id: createTaskId('Meet three attendees', 0),
+                name: 'Meet three attendees',
+                description: 'Connect with three people at this event.',
+                exp: 30
+            },
+            {
+                id: createTaskId('Share a favorite moment', 1),
+                name: 'Share a favorite moment',
+                description: 'Find someone new and share what you enjoyed most.',
+                exp: 20
+            }
+        ]
+    });
+}
+
+async function importCatalogEvent(index) {
+    const user = getCurrentUser();
+    const catalogEvent = catalogEvents[index];
+    if (!user || !catalogEvent || !catalogMessage) {
+        return;
+    }
+
+    await refreshSharedState();
+    const events = getEvents();
+    const importedEvent = buildImportedEvent(catalogEvent, user.email);
+
+    if (events.some((event) => event.id === importedEvent.id)) {
+        catalogMessage.textContent = 'This catalog event is already in your events.';
+        renderCatalogResults();
+        return;
+    }
+
+    events.push(importedEvent);
+    saveEvents(events);
+    const eventLink = makeEventGameLink(importedEvent.id);
+
+    catalogMessage.classList.add('success-message');
+    catalogMessage.textContent = `Event game created for ${importedEvent.name}.`;
+
+    if (createdEventLinkInput) {
+        createdEventLinkInput.value = eventLink;
+    }
+    createdEventLinkPanel?.classList.remove('hidden');
+    renderCatalogResults();
+    renderDashboard();
+}
+
 function clearTaskInputs() {
     document.querySelector('#taskNameInput').value = '';
     document.querySelector('#taskDescriptionInput').value = '';
@@ -2512,6 +2691,24 @@ draftTaskList.addEventListener('click', (event) => {
     draftTasks.splice(Number(button.dataset.removeTask), 1);
     renderDraftTasks();
 });
+
+if (catalogSearchForm) {
+    catalogSearchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        searchCatalogEvents();
+    });
+}
+
+if (catalogResults) {
+    catalogResults.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-import-catalog]');
+        if (!button) {
+            return;
+        }
+
+        importCatalogEvent(Number(button.dataset.importCatalog));
+    });
+}
 
 eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();

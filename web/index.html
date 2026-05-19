@@ -294,6 +294,49 @@
                         </div>
                     </div>
 
+                    <section class="catalog-panel" aria-label="Event catalog search">
+                        <div class="section-heading compact">
+                            <div>
+                                <p class="eyebrow">Catalog</p>
+                                <h2>Import public events</h2>
+                            </div>
+                        </div>
+
+                        <form id="catalogSearchForm">
+                            <label>
+                                Search
+                                <input type="search" id="catalogKeywordInput" placeholder="BTS, jazz, hackathon..." required>
+                            </label>
+
+                            <div class="two-column">
+                                <label>
+                                    City
+                                    <input type="text" id="catalogCityInput" placeholder="Optional">
+                                </label>
+                                <label>
+                                    Country
+                                    <input type="text" id="catalogCountryInput" maxlength="2" placeholder="US">
+                                </label>
+                            </div>
+
+                            <div class="two-column">
+                                <label>
+                                    From
+                                    <input type="date" id="catalogStartDateInput">
+                                </label>
+                                <label>
+                                    To
+                                    <input type="date" id="catalogEndDateInput">
+                                </label>
+                            </div>
+
+                            <button class="secondary-button" type="submit">Search catalog</button>
+                            <p class="form-message" id="catalogMessage"></p>
+                        </form>
+
+                        <div class="catalog-results" id="catalogResults"></div>
+                    </section>
+
                     <form id="eventForm">
                         <label>
                             Event name

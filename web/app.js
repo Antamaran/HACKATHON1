@@ -7,7 +7,8 @@ const STORAGE_KEYS = {
     eventParticipants: 'eventConnect.eventParticipants',
     taskCompletions: 'eventConnect.taskCompletions',
     eventRewards: 'eventConnect.eventRewards',
-    notifications: 'eventConnect.notifications'
+    notifications: 'eventConnect.notifications',
+    questionnaireAttempts: 'eventConnect.questionnaireAttempts'
 };
 
 const DAILY_ACCOUNT_XP_CAP = 200;
@@ -30,7 +31,8 @@ const REMOTE_STORAGE_KEYS = [
     STORAGE_KEYS.eventParticipants,
     STORAGE_KEYS.taskCompletions,
     STORAGE_KEYS.eventRewards,
-    STORAGE_KEYS.notifications
+    STORAGE_KEYS.notifications,
+    STORAGE_KEYS.questionnaireAttempts
 ];
 
 const SESSION_KEYS = {
@@ -127,6 +129,7 @@ const gameQrScanMessage = document.querySelector('#gameQrScanMessage');
 const gameTaskList = document.querySelector('#gameTaskList');
 const gameConnectionList = document.querySelector('#gameConnectionList');
 const gameLeaderboard = document.querySelector('#gameLeaderboard');
+const gameQuestionnaireBuilder = document.querySelector('#gameQuestionnaireBuilder');
 const eventGameLogoutButton = document.querySelector('#eventGameLogoutButton');
 const saveXpPrompt = document.querySelector('#saveXpPrompt');
 const saveXpText = document.querySelector('#saveXpText');
@@ -176,6 +179,7 @@ const scanQrButton = document.querySelector('#scanQrButton');
 const qrScannerPanel = document.querySelector('#qrScannerPanel');
 const qrScannerVideo = document.querySelector('#qrScannerVideo');
 const stopQrScanButton = document.querySelector('#stopQrScanButton');
+const questionnaireBuilder = document.querySelector('#questionnaireBuilder');
 const connectionList = document.querySelector('#connectionList');
 const notificationList = document.querySelector('#notificationList');
 
@@ -326,7 +330,8 @@ function mergeUsers(existing, incoming) {
             connectedUsers: uniqueValues([
                 ...(current.connectedUsers || []),
                 ...(user.connectedUsers || [])
-            ])
+            ]),
+            questionnaire: user.questionnaire?.length ? user.questionnaire : current.questionnaire || []
         });
     });
 
@@ -373,6 +378,10 @@ function mergeSharedValue(key, existing, incoming) {
         return Array.isArray(existing) || Array.isArray(incoming)
             ? mergeArraysByField(existing, incoming, 'id')
             : { ...(existing || {}), ...(incoming || {}) };
+    }
+
+    if (key === STORAGE_KEYS.questionnaireAttempts) {
+        return { ...(incoming || {}), ...(existing || {}) };
     }
 
     return incoming;
@@ -482,6 +491,10 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value);
 }
 
 function normalizeEventType(type) {
@@ -906,8 +919,35 @@ function getNotifications() {
     return readStore(STORAGE_KEYS.notifications, []);
 }
 
+function getQuestionnaireAttempts() {
+    return readStore(STORAGE_KEYS.questionnaireAttempts, {});
+}
+
 function findUserByEmail(email) {
     return getUsers().find((user) => user.email === email);
+}
+
+function createQuestionId() {
+    if (window.crypto?.randomUUID) {
+        return `question-${window.crypto.randomUUID()}`;
+    }
+
+    return `question-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeAnswer(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizeQuestionnaire(questionnaire) {
+    return (Array.isArray(questionnaire) ? questionnaire : [])
+        .map((item) => ({
+            id: item.id || createQuestionId(),
+            question: String(item.question || '').trim(),
+            answer: String(item.answer || '').trim()
+        }))
+        .filter((item) => item.question && item.answer)
+        .slice(0, 7);
 }
 
 function normalizeUser(user) {
@@ -925,7 +965,8 @@ function normalizeUser(user) {
             : parseInterests(user.interests || ''),
         goal: user.goal || '',
         currentEventId: user.currentEventId || '',
-        isGuest: Boolean(user.isGuest)
+        isGuest: Boolean(user.isGuest),
+        questionnaire: normalizeQuestionnaire(user.questionnaire)
     };
 }
 
@@ -974,7 +1015,10 @@ async function saveUser(user) {
             passwordHash: normalizedUser.passwordHash || users[existingIndex].passwordHash || '',
             connectedUsers: normalizedUser.connectedUsers.length
                 ? normalizedUser.connectedUsers
-                : users[existingIndex].connectedUsers
+                : users[existingIndex].connectedUsers,
+            questionnaire: normalizedUser.questionnaire.length
+                ? normalizedUser.questionnaire
+                : users[existingIndex].questionnaire || []
         };
     } else {
         users.push(normalizedUser);
@@ -1152,6 +1196,87 @@ function updateUserExp(email, expToAdd) {
     if (currentUser?.email === email) {
         writeStore(STORAGE_KEYS.currentUser, users[userIndex]);
     }
+}
+
+function updateParticipantEventXp(eventId, userEmail, expToAdd) {
+    if (!eventId || expToAdd <= 0) {
+        return;
+    }
+
+    const participants = getEventParticipants();
+    const participantIndex = participants.findIndex((participant) => (
+        participant.eventId === eventId && participant.userEmail === userEmail
+    ));
+
+    if (participantIndex < 0) {
+        return;
+    }
+
+    participants[participantIndex] = {
+        ...participants[participantIndex],
+        eventXp: participants[participantIndex].eventXp + expToAdd
+    };
+    saveEventParticipants(participants);
+}
+
+function getQuestionnaireAttemptKey(targetEmail, responderEmail) {
+    return `${normalizeEmail(targetEmail)}::${normalizeEmail(responderEmail)}`;
+}
+
+function getQuestionnaireAttempt(targetEmail, responderEmail) {
+    return getQuestionnaireAttempts()[getQuestionnaireAttemptKey(targetEmail, responderEmail)] || null;
+}
+
+function saveQuestionnaireAttempt(targetEmail, responderEmail, attempt) {
+    const attempts = getQuestionnaireAttempts();
+    attempts[getQuestionnaireAttemptKey(targetEmail, responderEmail)] = attempt;
+    writeStore(STORAGE_KEYS.questionnaireAttempts, attempts);
+}
+
+function saveUserQuestionnaire(userEmail, questionnaire) {
+    const users = getUsers();
+    const userIndex = users.findIndex((item) => item.email === userEmail);
+    if (userIndex < 0) {
+        return null;
+    }
+
+    users[userIndex] = {
+        ...users[userIndex],
+        questionnaire: normalizeQuestionnaire(questionnaire)
+    };
+    saveUsers(users);
+    const currentUser = getCurrentUser();
+    if (currentUser?.email === userEmail) {
+        writeLocalStore(STORAGE_KEYS.currentUser, normalizeUser(users[userIndex]));
+    }
+    return users[userIndex];
+}
+
+function gradeQuestionnaire(targetUser, responderEmail, answers, eventId = '') {
+    const questionnaire = normalizeQuestionnaire(targetUser?.questionnaire);
+    const responder = normalizeEmail(responderEmail);
+    if (!targetUser || !responder || questionnaire.length === 0 || getQuestionnaireAttempt(targetUser.email, responder)) {
+        return null;
+    }
+
+    const correct = questionnaire.reduce((total, question) => (
+        normalizeAnswer(answers[question.id]) === normalizeAnswer(question.answer) ? total + 1 : total
+    ), 0);
+    const xpAwarded = Math.round(50 * (correct / questionnaire.length));
+    const attempt = {
+        targetEmail: targetUser.email,
+        responderEmail: responder,
+        correct,
+        total: questionnaire.length,
+        xpAwarded,
+        createdAt: new Date().toISOString()
+    };
+
+    saveQuestionnaireAttempt(targetUser.email, responder, attempt);
+    updateUserExp(responder, xpAwarded);
+    updateParticipantEventXp(eventId, responder, xpAwarded);
+    addNotification(responder, `You earned ${xpAwarded} XP from ${targetUser.username}'s questionnaire.`);
+    return attempt;
 }
 
 function makeLocalDateTime(date, time) {
@@ -1785,8 +1910,140 @@ function renderProfile(user) {
     }
 
     renderConnectFlow(user);
+    renderQuestionnaireBuilder(user);
     renderConnections(user);
     renderNotifications(user);
+}
+
+function renderQuestionnaireBuilder(user, builder = questionnaireBuilder) {
+    if (!builder || !user) {
+        return;
+    }
+
+    const questions = normalizeQuestionnaire(user.questionnaire);
+    builder.innerHTML = `
+        <div class="section-heading compact">
+            <div>
+                <p class="eyebrow">Connection quiz</p>
+                <h3 class="compact-title">Your questionnaire</h3>
+            </div>
+            <span class="task-exp">${questions.length}/7</span>
+        </div>
+        <p class="helper-text">Add up to 7 short questions. People can answer them after they connect with you for up to 50 XP.</p>
+        <div class="questionnaire-list" data-questionnaire-list>
+            ${questions.map(renderQuestionnaireEditorRow).join('')}
+        </div>
+        <div class="button-row">
+            <button class="secondary-button" type="button" data-add-question ${questions.length >= 7 ? 'disabled' : ''}>Add question</button>
+            <button type="button" data-save-questionnaire>Save quiz</button>
+        </div>
+        <p class="form-message" data-questionnaire-message></p>
+    `;
+}
+
+function renderQuestionnaireEditorRow(question = {}) {
+    return `
+        <div class="questionnaire-row" data-questionnaire-row data-question-id="${escapeAttribute(question.id || createQuestionId())}">
+            <label>
+                Question
+                <input type="text" data-question-text value="${escapeAttribute(question.question || '')}" maxlength="140" placeholder="What is my favorite event topic?">
+            </label>
+            <label>
+                Correct answer
+                <input type="text" data-question-answer value="${escapeAttribute(question.answer || '')}" maxlength="80" placeholder="Networking">
+            </label>
+            <button class="secondary-button" type="button" data-remove-question>Remove</button>
+        </div>
+    `;
+}
+
+function readQuestionnaireBuilderRows(builder = questionnaireBuilder) {
+    return Array.from(builder?.querySelectorAll('[data-questionnaire-row]') || [])
+        .map((row) => ({
+            id: row.dataset.questionId || createQuestionId(),
+            question: row.querySelector('[data-question-text]')?.value || '',
+            answer: row.querySelector('[data-question-answer]')?.value || ''
+        }));
+}
+
+function handleQuestionnaireBuilderClick(event, builder = questionnaireBuilder) {
+    const message = builder?.querySelector('[data-questionnaire-message]');
+    const list = builder?.querySelector('[data-questionnaire-list]');
+
+    if (event.target.closest('[data-add-question]')) {
+        const rowCount = builder.querySelectorAll('[data-questionnaire-row]').length;
+        if (list && rowCount < 7) {
+            list.insertAdjacentHTML('beforeend', renderQuestionnaireEditorRow());
+        }
+        const addButton = builder.querySelector('[data-add-question]');
+        if (addButton) {
+            addButton.disabled = builder.querySelectorAll('[data-questionnaire-row]').length >= 7;
+        }
+        return true;
+    }
+
+    const removeButton = event.target.closest('[data-remove-question]');
+    if (removeButton) {
+        removeButton.closest('[data-questionnaire-row]')?.remove();
+        const addButton = builder.querySelector('[data-add-question]');
+        if (addButton) {
+            addButton.disabled = false;
+        }
+        return true;
+    }
+
+    if (event.target.closest('[data-save-questionnaire]')) {
+        const user = getCurrentUser();
+        if (!user) {
+            return true;
+        }
+
+        const savedUser = saveUserQuestionnaire(user.email, readQuestionnaireBuilderRows(builder));
+        if (message) {
+            const count = savedUser?.questionnaire.length || 0;
+            message.textContent = `Saved ${count} question${count === 1 ? '' : 's'}.`;
+            message.classList.add('success-message');
+        }
+        renderQuestionnaireBuilder(getCurrentUser(), builder);
+        return true;
+    }
+
+    return false;
+}
+
+function renderConnectionQuestionnaire(targetUser, responderUser, options = {}) {
+    const questions = normalizeQuestionnaire(targetUser?.questionnaire);
+    if (!targetUser || !responderUser || questions.length === 0) {
+        return '';
+    }
+
+    const attempt = getQuestionnaireAttempt(targetUser.email, responderUser.email);
+    if (attempt) {
+        return `
+            <div class="questionnaire-quiz">
+                <strong>Questionnaire complete</strong>
+                <p class="helper-text">You got ${attempt.correct}/${attempt.total} correct and earned ${attempt.xpAwarded} XP.</p>
+            </div>
+        `;
+    }
+
+    if (!options.canAnswer) {
+        return '<p class="helper-text">Connect first to unlock this person\'s questionnaire.</p>';
+    }
+
+    return `
+        <form class="questionnaire-quiz" data-questionnaire-form="${escapeAttribute(targetUser.email)}" data-event-id="${escapeAttribute(options.eventId || '')}">
+            <strong>Answer ${escapeHtml(targetUser.username)}'s questionnaire for up to 50 XP</strong>
+            ${questions.map((question) => `
+                <label>
+                    ${escapeHtml(question.question)}
+                    <input type="text" name="${escapeAttribute(question.id)}" autocomplete="off" required>
+                </label>
+            `).join('')}
+            <button type="submit">Submit answers</button>
+            <p class="form-message" data-questionnaire-result></p>
+        </form>
+    `;
 }
 
 function renderConnectFlow(user) {
@@ -1828,6 +2085,7 @@ function renderConnectFlow(user) {
         <button type="button" data-connect-user="${escapeHtml(targetUser.email)}" ${isConnected ? 'disabled' : ''}>
             ${isConnected ? 'Connected' : 'Connect with user'}
         </button>
+        ${renderConnectionQuestionnaire(targetUser, user, { canAnswer: isConnected })}
     `;
 }
 
@@ -2242,6 +2500,8 @@ function renderEventConnectFlow(event, participant) {
 
     const isSelf = targetParticipant.id === participant.id || targetParticipant.userEmail === participant.userEmail;
     const alreadyConnected = participant.connectedParticipantIds.includes(targetParticipant.id);
+    const user = getCurrentUser();
+    const targetUser = findUserByEmail(targetParticipant.userEmail);
     gameConnectFlow.classList.remove('hidden');
     gameConnectFlow.innerHTML = `
         <p class="eyebrow">QR scanned</p>
@@ -2251,6 +2511,10 @@ function renderEventConnectFlow(event, participant) {
             ? '<p class="helper-text">Share your QR with someone else to make a new connection.</p>'
             : `<button type="button" data-event-connect="${escapeHtml(targetParticipant.id)}" ${alreadyConnected ? 'disabled' : ''}>${alreadyConnected ? 'Connected' : 'Connect and earn XP'}</button>`
         }
+        ${!isSelf && targetUser && user ? renderConnectionQuestionnaire(targetUser, user, {
+            canAnswer: alreadyConnected,
+            eventId: event.id
+        }) : ''}
     `;
 }
 
@@ -2348,6 +2612,7 @@ function renderEventGameDashboard(event, participant) {
     if (gameLeaderboard) {
         gameLeaderboard.innerHTML = renderLeaderboard(event);
     }
+    renderQuestionnaireBuilder(user, gameQuestionnaireBuilder);
     renderSaveXpPrompt(event, freshParticipant);
 }
 
@@ -2394,6 +2659,21 @@ function saveGuestProgressToAccount(realEmail) {
         });
     });
     writeStore(STORAGE_KEYS.taskCompletions, completions);
+
+    const attempts = getQuestionnaireAttempts();
+    const migratedAttempts = {};
+    Object.entries(attempts).forEach(([key, attempt]) => {
+        const targetEmail = attempt.targetEmail === pending.guestEmail ? realEmail : attempt.targetEmail;
+        const responderEmail = attempt.responderEmail === pending.guestEmail ? realEmail : attempt.responderEmail;
+        migratedAttempts[
+            targetEmail && responderEmail ? getQuestionnaireAttemptKey(targetEmail, responderEmail) : key
+        ] = {
+            ...attempt,
+            targetEmail,
+            responderEmail
+        };
+    });
+    writeStore(STORAGE_KEYS.questionnaireAttempts, migratedAttempts);
 
     const users = getUsers()
         .filter((user) => user.email !== pending.guestEmail)
@@ -3105,6 +3385,43 @@ if (connectFlow) {
         connectUsers(user.email, targetEmail);
         renderDashboard();
     });
+
+    connectFlow.addEventListener('submit', (event) => {
+        const form = event.target.closest('[data-questionnaire-form]');
+        if (!form) {
+            return;
+        }
+
+        event.preventDefault();
+        const user = getCurrentUser();
+        const targetUser = findUserByEmail(normalizeEmail(form.dataset.questionnaireForm));
+        if (!user || !targetUser) {
+            return;
+        }
+
+        const answers = Object.fromEntries(new FormData(form).entries());
+        const attempt = gradeQuestionnaire(targetUser, user.email, answers, form.dataset.eventId || '');
+        const result = form.querySelector('[data-questionnaire-result]');
+        if (result) {
+            result.textContent = attempt
+                ? `You got ${attempt.correct}/${attempt.total} correct and earned ${attempt.xpAwarded} XP.`
+                : 'You already answered this questionnaire.';
+            result.classList.toggle('success-message', Boolean(attempt));
+        }
+        renderDashboard();
+    });
+}
+
+if (questionnaireBuilder) {
+    questionnaireBuilder.addEventListener('click', (event) => {
+        handleQuestionnaireBuilderClick(event, questionnaireBuilder);
+    });
+}
+
+if (gameQuestionnaireBuilder) {
+    gameQuestionnaireBuilder.addEventListener('click', (event) => {
+        handleQuestionnaireBuilderClick(event, gameQuestionnaireBuilder);
+    });
 }
 
 if (eventGameView) {
@@ -3134,6 +3451,36 @@ if (eventGameView) {
             if (targetEvent && participant) {
                 renderEventGameDashboard(targetEvent, participant);
             }
+        }
+    });
+
+    eventGameView.addEventListener('submit', (event) => {
+        const form = event.target.closest('[data-questionnaire-form]');
+        if (!form) {
+            return;
+        }
+
+        event.preventDefault();
+        const user = getCurrentUser();
+        const targetUser = findUserByEmail(normalizeEmail(form.dataset.questionnaireForm));
+        const eventId = form.dataset.eventId || getEventIdFromUrl();
+        if (!user || !targetUser) {
+            return;
+        }
+
+        const answers = Object.fromEntries(new FormData(form).entries());
+        const attempt = gradeQuestionnaire(targetUser, user.email, answers, eventId);
+        const targetEvent = getEventById(eventId);
+        const participant = getCurrentEventParticipant(eventId);
+        if (targetEvent && participant) {
+            renderEventGameDashboard(targetEvent, participant);
+        }
+        const result = form.querySelector('[data-questionnaire-result]');
+        if (result) {
+            result.textContent = attempt
+                ? `You got ${attempt.correct}/${attempt.total} correct and earned ${attempt.xpAwarded} XP.`
+                : 'You already answered this questionnaire.';
+            result.classList.toggle('success-message', Boolean(attempt));
         }
     });
 }

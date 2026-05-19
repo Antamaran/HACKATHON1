@@ -7,7 +7,8 @@ const allowedKeys = new Set([
   'eventConnect.eventParticipants',
   'eventConnect.taskCompletions',
   'eventConnect.eventRewards',
-  'eventConnect.notifications'
+  'eventConnect.notifications',
+  'eventConnect.questionnaireAttempts'
 ]);
 
 function response(statusCode, body) {
@@ -173,7 +174,8 @@ function mergeUsers(existing, incoming) {
       connectedUsers: uniqueArray([
         ...(current.connectedUsers || []),
         ...(user.connectedUsers || [])
-      ])
+      ]),
+      questionnaire: user.questionnaire?.length ? user.questionnaire : current.questionnaire || []
     });
   });
 
@@ -205,6 +207,10 @@ function mergeValue(key, existing, incoming) {
     return Array.isArray(existing) || Array.isArray(incoming)
       ? mergeArraysById(existing, incoming, 'id')
       : { ...(existing || {}), ...(incoming || {}) };
+  }
+
+  if (key === 'eventConnect.questionnaireAttempts') {
+    return { ...(incoming || {}), ...(existing || {}) };
   }
 
   return incoming;
